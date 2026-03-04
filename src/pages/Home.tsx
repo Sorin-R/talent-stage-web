@@ -81,6 +81,7 @@ export default function Home({ onNav }: Props) {
   const preloadedVideoId  = useRef<string | null>(null);
   const slotJustSwapped   = useRef(false);
   const pendingSwipeRef   = useRef<PendingSwipe | null>(null);
+  const isAnimatingRef    = useRef(false);
   const swipeTxnRef       = useRef(0);
   const reactionKey       = useRef(0);
   const searchTimer       = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -401,6 +402,7 @@ export default function Home({ onNav }: Props) {
     if (feedVideos.length === 0) return;
     preloadedVideoId.current = null;
     pendingSwipeRef.current = null;
+    isAnimatingRef.current = false;
     setNextVideoReady(false);
     for (let i = 1; i <= feedVideos.length; i++) {
       const nextIdx = (feedIndex + i) % feedVideos.length;
@@ -589,7 +591,7 @@ export default function Home({ onNav }: Props) {
 
   const toggleVideoPlayback = useCallback(() => {
     const active = getActiveRef().current;
-    if (!active || isAnimating) return;
+    if (!active || isAnimating || isAnimatingRef.current) return;
     if (active.paused) {
       hidePlaybackIndicator();
       setIsPaused(false);
@@ -680,7 +682,7 @@ export default function Home({ onNav }: Props) {
 
   // ── Drag (finger follows strip) ──────────────────────────────────────────
   const onDragMove = useCallback((dy: number) => {
-    if (isAnimating || !currentVideo) return;
+    if (isAnimatingRef.current || isAnimating || !currentVideo) return;
     const nextIdx = getNextPlayableIndex();
     if (nextIdx === null || nextIdx === feedIndex) return;
     const nextVideo = feedVideos[nextIdx];
@@ -753,8 +755,9 @@ export default function Home({ onNav }: Props) {
       pendingSwipeRef.current = null;
       if (slideTimer.current) clearTimeout(slideTimer.current);
       if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
-      getActiveRef().current?.pause();
+      const previousActive = getActiveRef().current;
       activeSlot.current = activeSlot.current === 'A' ? 'B' : 'A';
+      previousActive?.pause();
       slotJustSwapped.current = true;
 
       const nowActive = getActiveRef().current;
@@ -770,6 +773,7 @@ export default function Home({ onNav }: Props) {
       setStripDir(null);
       setStripNext(null);
       setStripSnap(false);
+      isAnimatingRef.current = false;
       setIsAnimating(false);
       setNextVideoReady(false);
     };
@@ -790,21 +794,21 @@ export default function Home({ onNav }: Props) {
       const activePending = pendingSwipeRef.current;
       if (!activePending || activePending.txn !== pendingTxn) return;
       pendingSwipeRef.current = null;
-      setStripOffset(0);
-      setStripDir(null);
-      setStripNext(null);
-      setStripSnap(false);
+      clearStrip();
+      isAnimatingRef.current = false;
       setIsAnimating(false);
+      setNextVideoReady(false);
       failedVideos.current.add(nextVideo.id);
-      skipToNextPlayable();
+      const active = getActiveRef().current;
+      if (active && active.paused) safePlay(active);
     };
     inactive.addEventListener('canplay', onReady, { once: true });
     inactive.addEventListener('error', onError, { once: true });
-  }, [getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo, skipToNextPlayable]);
+  }, [clearStrip, getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo]);
 
   // ── Commit swipe ─────────────────────────────────────────────────────────
   const goNext = useCallback((type: 'like' | 'dislike') => {
-    if (!currentVideo || isAnimating) return;
+    if (!currentVideo || isAnimating || isAnimatingRef.current) return;
     const nextIdx = getNextPlayableIndex();
     if (nextIdx === null || nextIdx === feedIndex) return;
     const nextVideo = feedVideos[nextIdx];
@@ -823,6 +827,7 @@ export default function Home({ onNav }: Props) {
     const target = dir === 'up' ? -h : h;
     const txn = ++swipeTxnRef.current;
 
+    isAnimatingRef.current = true;
     setIsAnimating(true);
     setVideoVoted(true);
     if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
@@ -911,9 +916,27 @@ export default function Home({ onNav }: Props) {
     const waitEl = getInactiveRef().current;
     if (!waitEl) {
       pendingSwipeRef.current = null;
+      isAnimatingRef.current = false;
       setIsAnimating(false);
       return;
     }
+
+    const cancelSwipe = (markAsFailed: boolean) => {
+      if (preloadWaitTimer.current) {
+        clearTimeout(preloadWaitTimer.current);
+        preloadWaitTimer.current = null;
+      }
+      const pending = pendingSwipeRef.current;
+      if (!pending || pending.txn !== txn) return;
+      pendingSwipeRef.current = null;
+      if (markAsFailed) failedVideos.current.add(nextVideo.id);
+      clearStrip();
+      setNextVideoReady(false);
+      isAnimatingRef.current = false;
+      setIsAnimating(false);
+      const active = getActiveRef().current;
+      if (active && active.paused) safePlay(active);
+    };
 
     const onReady = () => {
       const pending = pendingSwipeRef.current;
@@ -926,38 +949,24 @@ export default function Home({ onNav }: Props) {
     };
 
     const onError = () => {
-      const pending = pendingSwipeRef.current;
-      if (!pending || pending.txn !== txn) return;
-      if (preloadWaitTimer.current) {
-        clearTimeout(preloadWaitTimer.current);
-        preloadWaitTimer.current = null;
-      }
-      pendingSwipeRef.current = null;
-      setIsAnimating(false);
-      failedVideos.current.add(nextVideo.id);
-      skipToNextPlayable();
+      cancelSwipe(true);
     };
 
     waitEl.addEventListener('canplay', onReady, { once: true });
     waitEl.addEventListener('error', onError, { once: true });
 
     preloadWaitTimer.current = setTimeout(() => {
-      const pending = pendingSwipeRef.current;
-      if (!pending || pending.txn !== txn) return;
-      pendingSwipeRef.current = null;
-      setIsAnimating(false);
-      failedVideos.current.add(nextVideo.id);
-      skipToNextPlayable();
+      cancelSwipe(false);
     }, 3000);
   }, [
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
     getNextPlayableIndex, getPlaybackMetrics, isAnimating, loggedIn,
-    primeInactive, setFeedVideos, skipToNextPlayable, stripDir, stripNext, trackVideoSignal,
+    primeInactive, setFeedVideos, clearStrip, getActiveRef, safePlay, stripDir, stripNext, trackVideoSignal,
   ]);
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (isAnimating) return;
+    if (isAnimating || isAnimatingRef.current) return;
     if (Math.abs(e.deltaY) < WHEEL_THRESHOLD) return;
     if (wheelTimer.current) return;
     wheelTimer.current = setTimeout(() => { wheelTimer.current = null; }, WHEEL_DEBOUNCE_MS);
