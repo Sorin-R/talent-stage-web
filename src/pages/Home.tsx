@@ -21,6 +21,7 @@ const CREATOR_HANDLE_MAX = 20;
 const CREATOR_HANDLE_TRUNCATED = 17;
 const WHEEL_THRESHOLD = 30;
 const WHEEL_DEBOUNCE_MS = 400;
+const SWIPE_COOLDOWN_MS = 260;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -82,6 +83,8 @@ export default function Home({ onNav }: Props) {
   const slotJustSwapped   = useRef(false);
   const pendingSwipeRef   = useRef<PendingSwipe | null>(null);
   const isAnimatingRef    = useRef(false);
+  const swipeLockUntilRef = useRef(0);
+  const videoErrorCountRef = useRef<Record<string, number>>({});
   const swipeTxnRef       = useRef(0);
   const reactionKey       = useRef(0);
   const searchTimer       = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -520,6 +523,9 @@ export default function Home({ onNav }: Props) {
     lastWatchPctRef.current = 0;
     watchStartedAtRef.current = Date.now();
     completionSentRef.current = false;
+    if (currentVideo?.id) {
+      videoErrorCountRef.current[currentVideo.id] = 0;
+    }
   }, [currentVideo?.id]);
 
   // Eagerly preload N+1 into inactive slot.
@@ -621,9 +627,21 @@ export default function Home({ onNav }: Props) {
 
   const onVideoError = useCallback(() => {
     if (!currentVideo) return;
+    if (isAnimatingRef.current) return;
+    if (Date.now() < swipeLockUntilRef.current) return;
+    const currentErrCount = (videoErrorCountRef.current[currentVideo.id] || 0) + 1;
+    videoErrorCountRef.current[currentVideo.id] = currentErrCount;
+    if (currentErrCount <= 1) {
+      const active = getActiveRef().current;
+      if (active) {
+        active.load();
+        safePlay(active);
+      }
+      return;
+    }
     failedVideos.current.add(currentVideo.id);
     skipToNextPlayable();
-  }, [currentVideo, skipToNextPlayable]);
+  }, [currentVideo, getActiveRef, safePlay, skipToNextPlayable]);
 
   const trackVideoSignal = useCallback((eventType: string, payload: Record<string, unknown> = {}) => {
     if (!currentVideo?.id) return;
@@ -774,6 +792,7 @@ export default function Home({ onNav }: Props) {
       setStripNext(null);
       setStripSnap(false);
       isAnimatingRef.current = false;
+      swipeLockUntilRef.current = Date.now() + SWIPE_COOLDOWN_MS;
       setIsAnimating(false);
       setNextVideoReady(false);
     };
@@ -796,6 +815,7 @@ export default function Home({ onNav }: Props) {
       pendingSwipeRef.current = null;
       clearStrip();
       isAnimatingRef.current = false;
+      swipeLockUntilRef.current = Date.now() + SWIPE_COOLDOWN_MS;
       setIsAnimating(false);
       setNextVideoReady(false);
       failedVideos.current.add(nextVideo.id);
@@ -809,6 +829,7 @@ export default function Home({ onNav }: Props) {
   // ── Commit swipe ─────────────────────────────────────────────────────────
   const goNext = useCallback((type: 'like' | 'dislike') => {
     if (!currentVideo || isAnimating || isAnimatingRef.current) return;
+    if (Date.now() < swipeLockUntilRef.current) return;
     const nextIdx = getNextPlayableIndex();
     if (nextIdx === null || nextIdx === feedIndex) return;
     const nextVideo = feedVideos[nextIdx];
@@ -828,6 +849,7 @@ export default function Home({ onNav }: Props) {
     const txn = ++swipeTxnRef.current;
 
     isAnimatingRef.current = true;
+    swipeLockUntilRef.current = Date.now() + SLIDE_MS + SWIPE_COOLDOWN_MS;
     setIsAnimating(true);
     setVideoVoted(true);
     if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
@@ -933,6 +955,7 @@ export default function Home({ onNav }: Props) {
       clearStrip();
       setNextVideoReady(false);
       isAnimatingRef.current = false;
+      swipeLockUntilRef.current = Date.now() + SWIPE_COOLDOWN_MS;
       setIsAnimating(false);
       const active = getActiveRef().current;
       if (active && active.paused) safePlay(active);
@@ -967,6 +990,7 @@ export default function Home({ onNav }: Props) {
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (isAnimating || isAnimatingRef.current) return;
+    if (Date.now() < swipeLockUntilRef.current) return;
     if (Math.abs(e.deltaY) < WHEEL_THRESHOLD) return;
     if (wheelTimer.current) return;
     wheelTimer.current = setTimeout(() => { wheelTimer.current = null; }, WHEEL_DEBOUNCE_MS);
