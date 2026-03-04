@@ -30,6 +30,7 @@ const OVERLAY_THUMB_CACHE_LIMIT = 40;
 const IOS_OVERLAY_MIN_REVEAL_DELAY_MS = 90;
 const DEFAULT_SWIPE_LOCK_SECONDS = 5;
 const DEFAULT_SWIPE_LOCK_ENABLED = true;
+const DEFAULT_SWIPE_LOCK_OPACITY = 0.75;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -46,6 +47,7 @@ interface PendingSwipe {
 interface FeedRuntimeConfig {
   swipe_timer_enabled?: boolean;
   swipe_timer_seconds?: number;
+  swipe_timer_opacity?: number;
 }
 
 interface WakeLockSentinelLike {
@@ -88,6 +90,7 @@ export default function Home({ onNav }: Props) {
   const [swipeCountdown, setSwipeCountdown] = useState(0);
   const [swipeTimerEnabled, setSwipeTimerEnabled] = useState(DEFAULT_SWIPE_LOCK_ENABLED);
   const [swipeTimerSeconds, setSwipeTimerSeconds] = useState(DEFAULT_SWIPE_LOCK_SECONDS);
+  const [swipeTimerOpacity, setSwipeTimerOpacity] = useState(DEFAULT_SWIPE_LOCK_OPACITY);
   const [muteBtnTop, setMuteBtnTop] = useState<number | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
   const [forceOverlayMode, setForceOverlayMode] = useState<boolean | null>(null);
@@ -125,6 +128,7 @@ export default function Home({ onNav }: Props) {
   const pausedByScrollRef = useRef(false);
   const swipeLockUntilRef = useRef(0);
   const swipeCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const initialTimerSkippedRef = useRef(false);
   const watchMilestonesRef = useRef<Set<number>>(new Set());
   const lastWatchPctRef = useRef<number>(0);
   const watchStartedAtRef = useRef<number>(Date.now());
@@ -509,6 +513,12 @@ export default function Home({ onNav }: Props) {
         const seconds = Math.max(0, Math.min(60, Math.floor(rawSeconds)));
         setSwipeTimerSeconds(seconds);
       }
+
+      const rawOpacity = Number(data.data.swipe_timer_opacity);
+      if (Number.isFinite(rawOpacity)) {
+        const opacity = Math.max(0.05, Math.min(1, rawOpacity));
+        setSwipeTimerOpacity(opacity);
+      }
     };
 
     void loadFeedRuntimeConfig();
@@ -528,6 +538,14 @@ export default function Home({ onNav }: Props) {
     }
 
     if (!swipeTimerEnabled || swipeTimerSeconds <= 0) {
+      swipeLockUntilRef.current = 0;
+      setSwipeCountdown(0);
+      return;
+    }
+
+    // Keep first loaded video free to swipe immediately (also after page refresh).
+    if (!initialTimerSkippedRef.current) {
+      initialTimerSkippedRef.current = true;
       swipeLockUntilRef.current = 0;
       setSwipeCountdown(0);
       return;
@@ -2019,7 +2037,7 @@ export default function Home({ onNav }: Props) {
             )}
             {swipeCountdown > 0 && (
               <div className="swipe-lock-timer" aria-hidden>
-                <span>{swipeCountdown}</span>
+                <span style={{ color: `rgba(255, 255, 255, ${swipeTimerOpacity})` }}>{swipeCountdown}</span>
               </div>
             )}
             <div className={`playback-indicator ${(!hidePlaybackDuringSwipe && (isPaused || playbackIndicator)) ? 'show' : ''}`} aria-hidden>
