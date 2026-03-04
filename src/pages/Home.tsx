@@ -75,6 +75,8 @@ export default function Home({ onNav }: Props) {
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [muteBtnTop, setMuteBtnTop] = useState<number | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
+  const [overlayThumbReady, setOverlayThumbReady] = useState({ current: false, next: false });
+  const [, setOverlayFrameVersion] = useState(0);
 
   const feedContainerRef  = useRef<HTMLDivElement>(null);
   const titleRowRef       = useRef<HTMLDivElement>(null);
@@ -98,6 +100,10 @@ export default function Home({ onNav }: Props) {
   const loadFeedSeqRef    = useRef(0);
   const failedVideos      = useRef<Set<string>>(new Set());
   const preloadWindowRef  = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const overlayThumbCacheRef = useRef<Set<string>>(new Set());
+  const overlayThumbLoadRef = useRef<Map<string, Promise<boolean>>>(new Map());
+  const overlayFrameCacheRef = useRef<Map<string, string>>(new Map());
+  const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const watchMilestonesRef = useRef<Set<number>>(new Set());
   const lastWatchPctRef = useRef<number>(0);
   const watchStartedAtRef = useRef<number>(Date.now());
@@ -124,6 +130,59 @@ export default function Home({ onNav }: Props) {
     el.muted = true;
     void el.play().catch(() => {});
   }, []);
+
+  const preloadOverlayThumb = useCallback((url: string | null | undefined): Promise<boolean> => {
+    if (!url) return Promise.resolve(false);
+    if (overlayThumbCacheRef.current.has(url)) return Promise.resolve(true);
+    const inFlight = overlayThumbLoadRef.current.get(url);
+    if (inFlight) return inFlight;
+
+    const loader = new Promise<boolean>((resolve) => {
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = () => {
+        overlayThumbCacheRef.current.add(url);
+        overlayThumbLoadRef.current.delete(url);
+        resolve(true);
+      };
+      img.onerror = () => {
+        overlayThumbLoadRef.current.delete(url);
+        resolve(false);
+      };
+      img.src = url;
+    });
+
+    overlayThumbLoadRef.current.set(url, loader);
+    return loader;
+  }, []);
+
+  const captureActiveFrame = useCallback(() => {
+    if (!currentVideo) return;
+    const active = getActiveRef().current;
+    if (!active) return;
+    const vw = active.videoWidth || 0;
+    const vh = active.videoHeight || 0;
+    if (vw < 2 || vh < 2) return;
+
+    try {
+      const canvas = frameCanvasRef.current || document.createElement('canvas');
+      frameCanvasRef.current = canvas;
+      const maxW = 360;
+      const scale = Math.min(1, maxW / vw);
+      canvas.width = Math.max(2, Math.round(vw * scale));
+      canvas.height = Math.max(2, Math.round(vh * scale));
+      const ctx = canvas.getContext('2d', { alpha: false });
+      if (!ctx) return;
+      ctx.drawImage(active, 0, 0, canvas.width, canvas.height);
+      const frameData = canvas.toDataURL('image/jpeg', 0.72);
+      if (!frameData) return;
+      if (overlayFrameCacheRef.current.get(currentVideo.id) === frameData) return;
+      overlayFrameCacheRef.current.set(currentVideo.id, frameData);
+      setOverlayFrameVersion((v) => v + 1);
+    } catch {
+      // Ignore tainted canvas / decode errors and fall back to thumbnails.
+    }
+  }, [currentVideo, getActiveRef]);
 
   const releaseWakeLock = useCallback(async () => {
     const sentinel = wakeLockRef.current;
@@ -372,9 +431,43 @@ export default function Home({ onNav }: Props) {
         el.load();
       }
       preloadWindowRef.current.clear();
+      overlayThumbLoadRef.current.clear();
       void releaseWakeLock();
     };
   }, [releaseWakeLock]);
+
+  const overlayCurrentImage = currentVideo?.thumbnail_url
+    || (currentVideo ? overlayFrameCacheRef.current.get(currentVideo.id) : null)
+    || null;
+  const overlayNextImage = stripNext?.thumbnail_url
+    || (stripNext ? overlayFrameCacheRef.current.get(stripNext.id) : null)
+    || null;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!stripNext || !overlayCurrentImage || !overlayNextImage) {
+      setOverlayThumbReady({ current: false, next: false });
+      return;
+    }
+
+    const currentCached = overlayThumbCacheRef.current.has(overlayCurrentImage);
+    const nextCached = overlayThumbCacheRef.current.has(overlayNextImage);
+    setOverlayThumbReady({ current: currentCached, next: nextCached });
+    if (currentCached && nextCached) return;
+
+    void preloadOverlayThumb(overlayCurrentImage).then((ok) => {
+      if (cancelled) return;
+      setOverlayThumbReady((prev) => (prev.current === ok ? prev : { ...prev, current: ok }));
+    });
+    void preloadOverlayThumb(overlayNextImage).then((ok) => {
+      if (cancelled) return;
+      setOverlayThumbReady((prev) => (prev.next === ok ? prev : { ...prev, next: ok }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [overlayCurrentImage, overlayNextImage, preloadOverlayThumb, stripNext]);
 
   useEffect(() => {
     const active = getActiveRef().current;
@@ -947,6 +1040,7 @@ export default function Home({ onNav }: Props) {
 
     // Pause outgoing video immediately so decode/render budget shifts to incoming.
     // Keep pause overlay hidden during swipe transition.
+    captureActiveFrame();
     getActiveRef().current?.pause();
     setIsPaused(false);
 
@@ -1047,7 +1141,7 @@ export default function Home({ onNav }: Props) {
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
     getNextPlayableIndex, getPlaybackMetrics, isAnimating, loggedIn,
     primeInactive, setFeedVideos, skipToNextPlayable, trackVideoSignal,
-    getActiveRef, tryPlayMuted,
+    captureActiveFrame, getActiveRef, tryPlayMuted,
   ]);
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
@@ -1255,7 +1349,13 @@ export default function Home({ onNav }: Props) {
   }, [mainCommentText, loggedIn, currentVideo, onNav, setCmtsOpen]);
 
   // ── Strip styles ─────────────────────────────────────────────────────────
-  const usePosterOverlaySwipe = IOS_SAFE_SWIPE && isIOSDevice && !!stripNext?.thumbnail_url;
+  const usePosterOverlaySwipe = IOS_SAFE_SWIPE
+    && isIOSDevice
+    && !!stripNext
+    && !!overlayCurrentImage
+    && !!overlayNextImage
+    && overlayThumbReady.current
+    && overlayThumbReady.next;
 
   const stripStyle: React.CSSProperties = {
     position: 'absolute',
@@ -1292,14 +1392,14 @@ export default function Home({ onNav }: Props) {
   const swipeCurrentSurfaceStyle: React.CSSProperties = {
     ...swipeSurfaceBaseStyle,
     top: 0,
-    backgroundColor: currentVideo?.thumbnail_url ? '#000' : 'transparent',
-    backgroundImage: currentVideo?.thumbnail_url ? `url(${currentVideo.thumbnail_url})` : undefined,
+    backgroundColor: overlayCurrentImage ? '#000' : 'transparent',
+    backgroundImage: overlayCurrentImage ? `url(${overlayCurrentImage})` : undefined,
   };
 
   const swipeNextSurfaceStyle: React.CSSProperties = {
     ...swipeSurfaceBaseStyle,
     top: stripDir === 'up' ? containerH : -containerH,
-    backgroundImage: stripNext?.thumbnail_url ? `url(${stripNext.thumbnail_url})` : undefined,
+    backgroundImage: overlayNextImage ? `url(${overlayNextImage})` : undefined,
   };
 
   const videoStyle = (slot: 'A' | 'B'): React.CSSProperties => {
@@ -1548,12 +1648,14 @@ export default function Home({ onNav }: Props) {
                   const el = e.currentTarget;
                   if (!currentVideo || el.dataset.videoId !== currentVideo.id) return;
                   if (el.paused) safePlay(el);
+                  captureActiveFrame();
                 }}
                 onLoadedMetadata={(e) => {
                   if (!isActiveEl(e)) return;
                   const el = e.currentTarget;
                   if (!currentVideo || el.dataset.videoId !== currentVideo.id) return;
                   if (el.paused) safePlay(el);
+                  captureActiveFrame();
                 }}
                 onPlay={(e) => {
                   if (!isActiveEl(e)) return;
@@ -1585,12 +1687,14 @@ export default function Home({ onNav }: Props) {
                   const el = e.currentTarget;
                   if (!currentVideo || el.dataset.videoId !== currentVideo.id) return;
                   if (el.paused) safePlay(el);
+                  captureActiveFrame();
                 }}
                 onLoadedMetadata={(e) => {
                   if (!isActiveEl(e)) return;
                   const el = e.currentTarget;
                   if (!currentVideo || el.dataset.videoId !== currentVideo.id) return;
                   if (el.paused) safePlay(el);
+                  captureActiveFrame();
                 }}
                 onPlay={(e) => {
                   if (!isActiveEl(e)) return;
