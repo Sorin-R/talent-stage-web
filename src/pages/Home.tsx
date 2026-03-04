@@ -964,20 +964,11 @@ export default function Home({ onNav }: Props) {
       // Keep incoming slot hot while strip is moving.
       tryPlayMuted(getInactiveRef().current);
 
-      if (stripNext && stripDir === dir) {
-        setStripSnap(true);
-        setStripOffset(target);
-      } else {
-        setStripDir(dir);
-        setStripNext(nextVideo);
-        setStripOffset(0);
-        requestAnimationFrame(() => {
-          const activePending = pendingSwipeRef.current;
-          if (!activePending || activePending.txn !== txn) return;
-          setStripSnap(true);
-          setStripOffset(target);
-        });
-      }
+      // Deterministic transition path (no reset->RAF jump).
+      setStripDir(dir);
+      setStripNext(nextVideo);
+      setStripSnap(true);
+      setStripOffset(target);
 
       if (slideTimer.current) clearTimeout(slideTimer.current);
       slideTimer.current = setTimeout(() => {
@@ -997,11 +988,10 @@ export default function Home({ onNav }: Props) {
       return;
     }
 
-    // Keep current frame visible while we wait for next decode readiness.
+    // Keep strip primed while waiting so iOS overlay and strip state stay in sync.
     setStripSnap(false);
-    setStripOffset(0);
-    setStripDir(null);
-    setStripNext(null);
+    setStripDir(dir);
+    setStripNext(nextVideo);
 
     if (slideTimer.current) clearTimeout(slideTimer.current);
     if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
@@ -1053,7 +1043,7 @@ export default function Home({ onNav }: Props) {
   }, [
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
     getNextPlayableIndex, getPlaybackMetrics, isAnimating, loggedIn,
-    primeInactive, setFeedVideos, skipToNextPlayable, stripDir, stripNext, trackVideoSignal,
+    primeInactive, setFeedVideos, skipToNextPlayable, trackVideoSignal,
     getActiveRef, tryPlayMuted,
   ]);
 
