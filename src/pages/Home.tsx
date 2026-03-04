@@ -1262,7 +1262,7 @@ export default function Home({ onNav }: Props) {
   }, [mainCommentText, loggedIn, currentVideo, onNav, setCmtsOpen]);
 
   // ── Strip styles ─────────────────────────────────────────────────────────
-  const usePosterOverlaySwipe = IOS_SAFE_SWIPE && isIOSDevice;
+  const usePosterOverlaySwipe = IOS_SAFE_SWIPE && isIOSDevice && !!stripNext?.thumbnail_url;
 
   const stripStyle: React.CSSProperties = {
     position: 'absolute',
@@ -1299,6 +1299,7 @@ export default function Home({ onNav }: Props) {
   const swipeCurrentSurfaceStyle: React.CSSProperties = {
     ...swipeSurfaceBaseStyle,
     top: 0,
+    backgroundColor: currentVideo?.thumbnail_url ? '#000' : 'transparent',
     backgroundImage: currentVideo?.thumbnail_url ? `url(${currentVideo.thumbnail_url})` : undefined,
   };
 
@@ -1617,7 +1618,7 @@ export default function Home({ onNav }: Props) {
                   position: 'absolute',
                   inset: 0,
                   overflow: 'hidden',
-                  background: '#000',
+                  background: 'transparent',
                   zIndex: 3,
                   pointerEvents: 'none',
                 }}
