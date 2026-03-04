@@ -21,7 +21,7 @@ const CREATOR_HANDLE_MAX = 20;
 const CREATOR_HANDLE_TRUNCATED = 17;
 const WHEEL_THRESHOLD = 30;
 const WHEEL_DEBOUNCE_MS = 400;
-const SWIPE_COOLDOWN_MS = 100;
+const SWIPE_COOLDOWN_MS = 260;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -735,6 +735,7 @@ export default function Home({ onNav }: Props) {
 
   // ── Snap back when gesture didn't cross threshold ────────────────────────
   const onGestureEnd = useCallback((didSwipe: boolean) => {
+    if (isAnimatingRef.current || isAnimating) return;
     if (didSwipe) {
       setStripSnap(false); // goNext will drive the rest
       return;
@@ -749,7 +750,7 @@ export default function Home({ onNav }: Props) {
       setStripNext(null);
       setStripSnap(false);
     }, 220);
-  }, [stripNext, stripOffset]);
+  }, [isAnimating, stripNext, stripOffset]);
 
   const primeInactive = useCallback((video: Video) => {
     const el = getInactiveRef().current;

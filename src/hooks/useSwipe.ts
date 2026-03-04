@@ -74,7 +74,11 @@ export function useSwipe(
 
   // ── Touch handlers (unchanged) ────────────────────────────────────────
   const onTouchStart = useCallback((e: React.TouchEvent) => {
-    if (isAnimating) return;
+    if (isAnimating) {
+      dragActive.current = false;
+      e.preventDefault();
+      return;
+    }
     ty0.current = e.touches[0].clientY;
     tx0.current = e.touches[0].clientX;
     dragActive.current = true;
@@ -82,15 +86,19 @@ export function useSwipe(
   }, [isAnimating]);
 
   const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!dragActive.current || isAnimating) return;
+    if (!dragActive.current) return;
+    if (isAnimating) {
+      e.preventDefault();
+      return;
+    }
     const dy = e.touches[0].clientY - ty0.current;
     onDragMove?.(dy);
     e.preventDefault();
   }, [isAnimating, onDragMove]);
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (isAnimating) return;
     dragActive.current = false;
+    if (isAnimating) return;
     const dy = e.changedTouches[0].clientY - ty0.current;
     const dx = e.changedTouches[0].clientX - tx0.current;
 
