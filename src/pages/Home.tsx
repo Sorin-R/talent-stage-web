@@ -22,6 +22,7 @@ const CREATOR_HANDLE_TRUNCATED = 17;
 const WHEEL_THRESHOLD = 30;
 const WHEEL_DEBOUNCE_MS = 400;
 const PRELOAD_WINDOW_RADIUS = 3; // 3 above + current + 3 below = 7 videos warmed
+const IOS_SAFE_SWIPE = true;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -73,6 +74,7 @@ export default function Home({ onNav }: Props) {
   const [playbackIndicator, setPlaybackIndicator] = useState<'play' | 'pause' | null>(null);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [muteBtnTop, setMuteBtnTop] = useState<number | null>(null);
+  const [isIOSDevice, setIsIOSDevice] = useState(false);
 
   const feedContainerRef  = useRef<HTMLDivElement>(null);
   const titleRowRef       = useRef<HTMLDivElement>(null);
@@ -152,6 +154,14 @@ export default function Home({ onNav }: Props) {
     } catch {
       // ignored
     }
+  }, []);
+
+  useEffect(() => {
+    if (!IOS_SAFE_SWIPE || typeof navigator === 'undefined') return;
+    const ua = navigator.userAgent || '';
+    const isIOSLike = /iPhone|iPad|iPod/i.test(ua)
+      || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+    setIsIOSDevice(isIOSLike);
   }, []);
 
   // Track container height so strip slots are exactly the right size
@@ -1252,15 +1262,50 @@ export default function Home({ onNav }: Props) {
   }, [mainCommentText, loggedIn, currentVideo, onNav, setCmtsOpen]);
 
   // ── Strip styles ─────────────────────────────────────────────────────────
+  const usePosterOverlaySwipe = IOS_SAFE_SWIPE && isIOSDevice;
+
   const stripStyle: React.CSSProperties = {
     position: 'absolute',
     inset: 0,
     overflow: 'visible',
     zIndex: 1,
     background: '#000',
+    transform: usePosterOverlaySwipe ? 'translateY(0px)' : `translateY(${stripOffset}px)`,
+    transition: usePosterOverlaySwipe ? 'none' : (stripSnap ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}` : 'none'),
+    willChange: usePosterOverlaySwipe ? 'auto' : 'transform',
+  };
+
+  const swipeOverlayActive = usePosterOverlaySwipe && stripDir !== null && stripNext !== null;
+  const swipeOverlayTrackStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
     transform: `translateY(${stripOffset}px)`,
     transition: stripSnap ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}` : 'none',
     willChange: 'transform',
+  };
+
+  const swipeSurfaceBaseStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    width: '100%',
+    height: containerH,
+    backgroundColor: '#000',
+    backgroundPosition: 'center center',
+    backgroundSize: 'cover',
+    backgroundRepeat: 'no-repeat',
+  };
+
+  const swipeCurrentSurfaceStyle: React.CSSProperties = {
+    ...swipeSurfaceBaseStyle,
+    top: 0,
+    backgroundImage: currentVideo?.thumbnail_url ? `url(${currentVideo.thumbnail_url})` : undefined,
+  };
+
+  const swipeNextSurfaceStyle: React.CSSProperties = {
+    ...swipeSurfaceBaseStyle,
+    top: stripDir === 'up' ? containerH : -containerH,
+    backgroundImage: stripNext?.thumbnail_url ? `url(${stripNext.thumbnail_url})` : undefined,
   };
 
   const videoStyle = (slot: 'A' | 'B'): React.CSSProperties => {
@@ -1489,7 +1534,7 @@ export default function Home({ onNav }: Props) {
             */}
             <div
               style={stripStyle}
-              onTransitionEnd={handleSwipeTransitionEnd}
+              onTransitionEnd={usePosterOverlaySwipe ? undefined : handleSwipeTransitionEnd}
             >
               <video
                 ref={videoRefA}
@@ -1566,6 +1611,23 @@ export default function Home({ onNav }: Props) {
                 onClick={(e) => { if (isActiveEl(e)) toggleVideoPlayback(); }}
               />
             </div>
+            {swipeOverlayActive && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  overflow: 'hidden',
+                  background: '#000',
+                  zIndex: 3,
+                  pointerEvents: 'none',
+                }}
+              >
+                <div style={swipeOverlayTrackStyle} onTransitionEnd={handleSwipeTransitionEnd}>
+                  <div style={swipeCurrentSurfaceStyle} />
+                  <div style={swipeNextSurfaceStyle} />
+                </div>
+              </div>
+            )}
             {autoplayBlocked && !isAnimating && (
               <div className="autoplay-fallback">
                 <button
