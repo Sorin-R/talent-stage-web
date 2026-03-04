@@ -20,8 +20,9 @@ export function useSwipe(
   const gestureLockUntil = useRef(0);
   const dragActive = useRef(false);
   const SWIPE_TRIGGER_PX = 78;
-  const MIN_FLICK_PX = 26;
-  const FLICK_VELOCITY_PX_PER_MS = 0.65;
+  const MIN_FLICK_PX = 40;
+  const FLICK_VELOCITY_PX_PER_MS = 0.75;
+  const VERTICAL_RATIO = 1.15;
   const isTouchLikeRef = useRef(false);
 
   // ── Wheel support (desktop) ───────────────────────────────────────────
@@ -110,7 +111,7 @@ export function useSwipe(
     const absDx = Math.abs(dx);
     const elapsed = Math.max(1, Date.now() - t0.current);
     const velocity = absDy / elapsed;
-    const mostlyVertical = absDy > absDx;
+    const mostlyVertical = absDy > absDx * VERTICAL_RATIO;
     const enoughDistance = absDy >= SWIPE_TRIGGER_PX;
     const isFlick = absDy >= MIN_FLICK_PX && velocity >= FLICK_VELOCITY_PX_PER_MS;
 
