@@ -859,7 +859,12 @@ export default function Home({ onNav }: Props) {
 
   const toggleVideoPlayback = useCallback(() => {
     const active = getActiveRef().current;
-    if (!active || isAnimating) return;
+    const scrollInProgress = isAnimating
+      || swipeCountdown > 0
+      || pausedByScrollRef.current
+      || stripDir !== null
+      || Math.abs(stripOffset) > 2;
+    if (!active || scrollInProgress) return;
     if (active.paused) {
       hidePlaybackIndicator();
       setIsPaused(false);
@@ -874,7 +879,7 @@ export default function Home({ onNav }: Props) {
       active.pause();
       showPlaybackIndicator('pause');
     }
-  }, [getActiveRef, hidePlaybackIndicator, isAnimating, showPlaybackIndicator]);
+  }, [getActiveRef, hidePlaybackIndicator, isAnimating, showPlaybackIndicator, stripDir, stripOffset, swipeCountdown]);
 
   const handleFallbackPlay = useCallback(() => {
     const active = getActiveRef().current;
