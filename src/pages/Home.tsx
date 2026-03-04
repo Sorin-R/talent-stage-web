@@ -112,6 +112,7 @@ export default function Home({ onNav }: Props) {
   const overlayFrameCacheRef = useRef<Map<string, string>>(new Map());
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastCaptureTimeRef = useRef(0);
+  const pausedByScrollRef = useRef(false);
   const watchMilestonesRef = useRef<Set<number>>(new Set());
   const lastWatchPctRef = useRef<number>(0);
   const watchStartedAtRef = useRef<number>(Date.now());
@@ -548,6 +549,7 @@ export default function Home({ onNav }: Props) {
     setStripDir(null);
     setStripNext(null);
     setStripSnap(false);
+    pausedByScrollRef.current = false;
     resetOverlaySwipeState();
   }, [resetOverlaySwipeState]);
 
@@ -915,6 +917,15 @@ export default function Home({ onNav }: Props) {
     const max = Math.floor(containerH * 0.75);
     const clamped = Math.max(-max, Math.min(max, dy));
 
+    if (Math.abs(clamped) > 4 && !pausedByScrollRef.current) {
+      const active = getActiveRef().current;
+      if (active && !active.paused) {
+        active.pause();
+        setIsPaused(true);
+        pausedByScrollRef.current = true;
+      }
+    }
+
     setStripSnap(false);
     setStripOffset(clamped);
 
@@ -949,16 +960,26 @@ export default function Home({ onNav }: Props) {
     }
   }, [
     captureActiveFrame, containerH, currentVideo, feedIndex, feedVideos, forceOverlayMode,
-    getNextPlayableIndex, getOverlayImageForVideo, isAnimating, isIOSDevice, isOverlayImageReady,
+    getActiveRef, getNextPlayableIndex, getOverlayImageForVideo, isAnimating, isIOSDevice, isOverlayImageReady,
   ]);
 
   // ── Snap back when gesture didn't cross threshold ────────────────────────
   const onGestureEnd = useCallback((didSwipe: boolean) => {
     if (didSwipe) {
       setStripSnap(false); // goNext will drive the rest
+      pausedByScrollRef.current = false;
       return;
     }
     if (!stripNext && stripOffset === 0) {
+      if (pausedByScrollRef.current) {
+        const active = getActiveRef().current;
+        if (active) {
+          safePlay(active);
+          setAutoplayBlocked(false);
+          setIsPaused(false);
+        }
+        pausedByScrollRef.current = false;
+      }
       resetOverlaySwipeState();
       return;
     }
@@ -970,9 +991,18 @@ export default function Home({ onNav }: Props) {
       setStripDir(null);
       setStripNext(null);
       setStripSnap(false);
+      if (pausedByScrollRef.current) {
+        const active = getActiveRef().current;
+        if (active) {
+          safePlay(active);
+          setAutoplayBlocked(false);
+          setIsPaused(false);
+        }
+        pausedByScrollRef.current = false;
+      }
       resetOverlaySwipeState();
     }, 220);
-  }, [resetOverlaySwipeState, stripNext, stripOffset]);
+  }, [getActiveRef, resetOverlaySwipeState, safePlay, stripNext, stripOffset]);
 
   const primeInactive = useCallback((video: Video) => {
     const el = getInactiveRef().current;
@@ -1034,6 +1064,7 @@ export default function Home({ onNav }: Props) {
       setStripNext(null);
       setStripSnap(false);
       resetOverlaySwipeState();
+      pausedByScrollRef.current = false;
       setIsAnimating(false);
       setNextVideoReady(false);
     };
@@ -1059,6 +1090,7 @@ export default function Home({ onNav }: Props) {
       setStripNext(null);
       setStripSnap(false);
       resetOverlaySwipeState();
+      pausedByScrollRef.current = false;
       setIsAnimating(false);
       failedVideos.current.add(nextVideo.id);
       skipToNextPlayable();
@@ -1088,6 +1120,7 @@ export default function Home({ onNav }: Props) {
       snapBackTimer.current = null;
     }
     setIsAnimating(false);
+    pausedByScrollRef.current = false;
     resetOverlaySwipeState();
 
     if (!currentVideo) return;
@@ -1239,6 +1272,7 @@ export default function Home({ onNav }: Props) {
     if (!waitEl) {
       pendingSwipeRef.current = null;
       setIsAnimating(false);
+      pausedByScrollRef.current = false;
       resetOverlaySwipeState();
       return;
     }
@@ -1265,6 +1299,7 @@ export default function Home({ onNav }: Props) {
       }
       pendingSwipeRef.current = null;
       setIsAnimating(false);
+      pausedByScrollRef.current = false;
       failedVideos.current.add(nextVideo.id);
       skipToNextPlayable();
     };
@@ -1281,6 +1316,7 @@ export default function Home({ onNav }: Props) {
       }
       pendingSwipeRef.current = null;
       setIsAnimating(false);
+      pausedByScrollRef.current = false;
       failedVideos.current.add(nextVideo.id);
       skipToNextPlayable();
     }, 3000);
