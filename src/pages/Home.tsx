@@ -28,7 +28,8 @@ const DRAG_FRAME_CAPTURE_THROTTLE_MS = 66;
 const OVERLAY_FRAME_CACHE_LIMIT = 20;
 const OVERLAY_THUMB_CACHE_LIMIT = 40;
 const IOS_OVERLAY_MIN_REVEAL_DELAY_MS = 90;
-const SWIPE_LOCK_SECONDS = 5;
+const DEFAULT_SWIPE_LOCK_SECONDS = 5;
+const DEFAULT_SWIPE_LOCK_ENABLED = true;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -40,6 +41,11 @@ interface PendingSwipe {
   nextVideo: Video;
   direction: 'up' | 'down';
   animationStarted: boolean;
+}
+
+interface FeedRuntimeConfig {
+  swipe_timer_enabled?: boolean;
+  swipe_timer_seconds?: number;
 }
 
 interface WakeLockSentinelLike {
@@ -80,6 +86,8 @@ export default function Home({ onNav }: Props) {
   const [playbackIndicator, setPlaybackIndicator] = useState<'play' | 'pause' | null>(null);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [swipeCountdown, setSwipeCountdown] = useState(0);
+  const [swipeTimerEnabled, setSwipeTimerEnabled] = useState(DEFAULT_SWIPE_LOCK_ENABLED);
+  const [swipeTimerSeconds, setSwipeTimerSeconds] = useState(DEFAULT_SWIPE_LOCK_SECONDS);
   const [muteBtnTop, setMuteBtnTop] = useState<number | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
   const [forceOverlayMode, setForceOverlayMode] = useState<boolean | null>(null);
@@ -487,6 +495,27 @@ export default function Home({ onNav }: Props) {
   }, [releaseWakeLock]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadFeedRuntimeConfig = async () => {
+      const data = await apiFetch<FeedRuntimeConfig>('/feed-config');
+      if (cancelled || !data.success || !data.data) return;
+
+      const enabled = data.data.swipe_timer_enabled;
+      if (typeof enabled === 'boolean') setSwipeTimerEnabled(enabled);
+
+      const rawSeconds = Number(data.data.swipe_timer_seconds);
+      if (Number.isFinite(rawSeconds)) {
+        const seconds = Math.max(0, Math.min(60, Math.floor(rawSeconds)));
+        setSwipeTimerSeconds(seconds);
+      }
+    };
+
+    void loadFeedRuntimeConfig();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     if (swipeCountdownTimerRef.current) {
       clearInterval(swipeCountdownTimerRef.current);
       swipeCountdownTimerRef.current = null;
@@ -498,8 +527,14 @@ export default function Home({ onNav }: Props) {
       return;
     }
 
-    swipeLockUntilRef.current = Date.now() + SWIPE_LOCK_SECONDS * 1000;
-    setSwipeCountdown(SWIPE_LOCK_SECONDS);
+    if (!swipeTimerEnabled || swipeTimerSeconds <= 0) {
+      swipeLockUntilRef.current = 0;
+      setSwipeCountdown(0);
+      return;
+    }
+
+    swipeLockUntilRef.current = Date.now() + swipeTimerSeconds * 1000;
+    setSwipeCountdown(swipeTimerSeconds);
 
     swipeCountdownTimerRef.current = setInterval(() => {
       const remainingMs = swipeLockUntilRef.current - Date.now();
@@ -520,7 +555,7 @@ export default function Home({ onNav }: Props) {
         swipeCountdownTimerRef.current = null;
       }
     };
-  }, [currentVideo?.id, currentVideo]);
+  }, [currentVideo?.id, currentVideo, swipeTimerEnabled, swipeTimerSeconds]);
 
   const overlayCurrentImage = getOverlayImageForVideo(currentVideo);
   const overlayNextImage = getOverlayImageForVideo(stripNext);
