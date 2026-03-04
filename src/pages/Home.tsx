@@ -912,9 +912,7 @@ export default function Home({ onNav }: Props) {
       });
     }
 
-    const h = containerH;
     const dir = type === 'like' ? 'up' : 'down';
-    const target = dir === 'up' ? -h : h;
     const txn = ++swipeTxnRef.current;
 
     setIsAnimating(true);
@@ -956,6 +954,9 @@ export default function Home({ onNav }: Props) {
       const pending = pendingSwipeRef.current;
       if (!pending || pending.txn !== txn || pending.animationStarted) return;
       pendingSwipeRef.current = { ...pending, animationStarted: true };
+      const pendingDirection = pending.direction;
+      const pendingVideo = pending.nextVideo;
+      const pendingTarget = pendingDirection === 'up' ? -containerH : containerH;
       if (preloadWaitTimer.current) {
         clearTimeout(preloadWaitTimer.current);
         preloadWaitTimer.current = null;
@@ -965,10 +966,10 @@ export default function Home({ onNav }: Props) {
       tryPlayMuted(getInactiveRef().current);
 
       // Deterministic transition path (no reset->RAF jump).
-      setStripDir(dir);
-      setStripNext(nextVideo);
+      setStripDir(pendingDirection);
+      setStripNext(pendingVideo);
       setStripSnap(true);
-      setStripOffset(target);
+      setStripOffset(pendingTarget);
 
       if (slideTimer.current) clearTimeout(slideTimer.current);
       slideTimer.current = setTimeout(() => {
@@ -989,9 +990,11 @@ export default function Home({ onNav }: Props) {
     }
 
     // Keep strip primed while waiting so iOS overlay and strip state stay in sync.
+    const primedPending = pendingSwipeRef.current;
+    if (!primedPending || primedPending.txn !== txn) return;
     setStripSnap(false);
-    setStripDir(dir);
-    setStripNext(nextVideo);
+    setStripDir(primedPending.direction);
+    setStripNext(primedPending.nextVideo);
 
     if (slideTimer.current) clearTimeout(slideTimer.current);
     if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
@@ -1010,7 +1013,7 @@ export default function Home({ onNav }: Props) {
     const onReady = () => {
       const pending = pendingSwipeRef.current;
       if (!pending || pending.txn !== txn) return;
-      if (waitEl.dataset.videoId !== nextVideo.id || preloadedVideoId.current !== nextVideo.id) return;
+      if (waitEl.dataset.videoId !== pending.nextVideo.id || preloadedVideoId.current !== pending.nextVideo.id) return;
       tryPlayMuted(waitEl);
       setNextVideoReady(true);
       startTransition();
