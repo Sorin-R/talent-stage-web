@@ -21,6 +21,7 @@ const CREATOR_HANDLE_MAX = 20;
 const CREATOR_HANDLE_TRUNCATED = 17;
 const WHEEL_THRESHOLD = 30;
 const WHEEL_DEBOUNCE_MS = 400;
+const PRELOAD_WINDOW_RADIUS = 3; // 3 above + current + 3 below = 7 videos warmed
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -94,6 +95,7 @@ export default function Home({ onNav }: Props) {
   const startupPlayWatchdog = useRef<ReturnType<typeof setInterval> | null>(null);
   const loadFeedSeqRef    = useRef(0);
   const failedVideos      = useRef<Set<string>>(new Set());
+  const preloadWindowRef  = useRef<Map<string, HTMLVideoElement>>(new Map());
   const watchMilestonesRef = useRef<Set<number>>(new Set());
   const lastWatchPctRef = useRef<number>(0);
   const watchStartedAtRef = useRef<number>(Date.now());
@@ -114,6 +116,12 @@ export default function Home({ onNav }: Props) {
       el.play().catch(() => {});
     });
   }, [feedMuted]);
+
+  const tryPlayMuted = useCallback((el: HTMLVideoElement | null) => {
+    if (!el) return;
+    el.muted = true;
+    void el.play().catch(() => {});
+  }, []);
 
   const releaseWakeLock = useCallback(async () => {
     const sentinel = wakeLockRef.current;
@@ -219,6 +227,12 @@ export default function Home({ onNav }: Props) {
     if (slotA) { slotA.pause(); slotA.removeAttribute('src'); slotA.load(); }
     const slotB = videoRefB.current;
     if (slotB) { slotB.pause(); slotB.removeAttribute('src'); slotB.load(); }
+    for (const el of preloadWindowRef.current.values()) {
+      el.pause();
+      el.removeAttribute('src');
+      el.load();
+    }
+    preloadWindowRef.current.clear();
     setFeedVideos(items);
     setFeedIndex(0);
     if (items.length > 0) {
@@ -342,6 +356,12 @@ export default function Home({ onNav }: Props) {
       if (startupPlayWatchdog.current) clearInterval(startupPlayWatchdog.current);
       if (searchTimer.current) clearTimeout(searchTimer.current);
       if (creatorSearchTimer.current) clearTimeout(creatorSearchTimer.current);
+      for (const el of preloadWindowRef.current.values()) {
+        el.pause();
+        el.removeAttribute('src');
+        el.load();
+      }
+      preloadWindowRef.current.clear();
       void releaseWakeLock();
     };
   }, [releaseWakeLock]);
@@ -395,6 +415,69 @@ export default function Home({ onNav }: Props) {
     }
     return null;
   }, [feedVideos, feedIndex]);
+
+  const getPlayableIndexByOffset = useCallback((offset: number): number | null => {
+    if (feedVideos.length === 0) return null;
+    if (offset === 0) return feedIndex;
+    const step = offset > 0 ? 1 : -1;
+    let idx = feedIndex;
+    let remaining = Math.abs(offset);
+    let guard = 0;
+    const maxGuard = feedVideos.length * 3;
+
+    while (remaining > 0 && guard < maxGuard) {
+      idx = (idx + step + feedVideos.length) % feedVideos.length;
+      guard += 1;
+      const candidate = feedVideos[idx];
+      if (!candidate || failedVideos.current.has(candidate.id)) continue;
+      remaining -= 1;
+    }
+    return remaining === 0 ? idx : null;
+  }, [feedVideos, feedIndex]);
+
+  // Warm 7 videos around the current index (3 above + current + 3 below).
+  // This keeps fast swipes ready without rendering extra DOM video elements.
+  useEffect(() => {
+    if (feedVideos.length === 0) {
+      for (const el of preloadWindowRef.current.values()) {
+        el.pause();
+        el.removeAttribute('src');
+        el.load();
+      }
+      preloadWindowRef.current.clear();
+      return;
+    }
+
+    const keepIds = new Set<string>();
+    for (let offset = -PRELOAD_WINDOW_RADIUS; offset <= PRELOAD_WINDOW_RADIUS; offset += 1) {
+      const idx = getPlayableIndexByOffset(offset);
+      if (idx === null) continue;
+      const video = feedVideos[idx];
+      if (!video) continue;
+      keepIds.add(video.id);
+
+      // Current and inactive strip slot are handled by live slot A/B elements.
+      if (video.id === currentVideo?.id || video.id === preloadedVideoId.current) continue;
+
+      if (!preloadWindowRef.current.has(video.id)) {
+        const el = document.createElement('video');
+        el.preload = 'auto';
+        el.muted = true;
+        el.playsInline = true;
+        el.src = video.file_url;
+        el.load();
+        preloadWindowRef.current.set(video.id, el);
+      }
+    }
+
+    for (const [id, el] of preloadWindowRef.current.entries()) {
+      if (keepIds.has(id)) continue;
+      el.pause();
+      el.removeAttribute('src');
+      el.load();
+      preloadWindowRef.current.delete(id);
+    }
+  }, [feedVideos, feedIndex, currentVideo?.id, getPlayableIndexByOffset]);
 
   // ── Skip on error ────────────────────────────────────────────────────────
   const skipToNextPlayable = useCallback(() => {
@@ -546,8 +629,7 @@ export default function Home({ onNav }: Props) {
 
     const onReady = () => {
       if (el.dataset.videoId !== nextVid.id || preloadedVideoId.current !== nextVid.id) return;
-      el.pause();
-      el.currentTime = 0;
+      tryPlayMuted(el);
       setNextVideoReady(true);
     };
     const onError = () => {
@@ -562,7 +644,7 @@ export default function Home({ onNav }: Props) {
       el.removeEventListener('canplay', onReady);
       el.removeEventListener('error', onError);
     };
-  }, [feedIndex, feedVideos, getInactiveRef, getNextPlayableIndex]);
+  }, [feedIndex, feedVideos, getInactiveRef, getNextPlayableIndex, tryPlayMuted]);
 
   const showReaction = (type: 'like' | 'dislike') => {
     reactionKey.current++;
@@ -737,7 +819,8 @@ export default function Home({ onNav }: Props) {
     el.muted = true;
     el.preload = 'auto';
     el.load();
-  }, [getInactiveRef]);
+    tryPlayMuted(el);
+  }, [getInactiveRef, tryPlayMuted]);
 
   const finalizeSwipe = useCallback((txn?: number) => {
     const pending = pendingSwipeRef.current;
@@ -781,8 +864,7 @@ export default function Home({ onNav }: Props) {
 
     const onReady = () => {
       if (inactive.dataset.videoId !== nextVideo.id || preloadedVideoId.current !== nextVideo.id) return;
-      inactive.pause();
-      inactive.currentTime = 0;
+      tryPlayMuted(inactive);
       setNextVideoReady(true);
       commit();
     };
@@ -800,7 +882,7 @@ export default function Home({ onNav }: Props) {
     };
     inactive.addEventListener('canplay', onReady, { once: true });
     inactive.addEventListener('error', onError, { once: true });
-  }, [getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo, skipToNextPlayable]);
+  }, [getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo, skipToNextPlayable, tryPlayMuted]);
 
   // ── Commit swipe ─────────────────────────────────────────────────────────
   const goNext = useCallback((type: 'like' | 'dislike') => {
@@ -862,6 +944,10 @@ export default function Home({ onNav }: Props) {
         preloadWaitTimer.current = null;
       }
 
+      // Free decode/render capacity immediately for the incoming video.
+      getActiveRef().current?.pause();
+      tryPlayMuted(getInactiveRef().current);
+
       if (stripNext && stripDir === dir) {
         setStripSnap(true);
         setStripOffset(target);
@@ -919,8 +1005,7 @@ export default function Home({ onNav }: Props) {
       const pending = pendingSwipeRef.current;
       if (!pending || pending.txn !== txn) return;
       if (waitEl.dataset.videoId !== nextVideo.id || preloadedVideoId.current !== nextVideo.id) return;
-      waitEl.pause();
-      waitEl.currentTime = 0;
+      tryPlayMuted(waitEl);
       setNextVideoReady(true);
       startTransition();
     };
@@ -953,6 +1038,7 @@ export default function Home({ onNav }: Props) {
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
     getNextPlayableIndex, getPlaybackMetrics, isAnimating, loggedIn,
     primeInactive, setFeedVideos, skipToNextPlayable, stripDir, stripNext, trackVideoSignal,
+    getActiveRef, tryPlayMuted,
   ]);
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
