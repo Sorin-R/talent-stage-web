@@ -16,14 +16,7 @@ export function useSwipe(
 ): SwipeHandlers {
   const ty0 = useRef(0);
   const tx0 = useRef(0);
-  const t0 = useRef(0);
-  const gestureLockUntil = useRef(0);
   const dragActive = useRef(false);
-  const SWIPE_TRIGGER_PX = 78;
-  const MIN_FLICK_PX = 40;
-  const FLICK_VELOCITY_PX_PER_MS = 0.75;
-  const VERTICAL_RATIO = 1.15;
-  const isTouchLikeRef = useRef(false);
 
   // ── Wheel support (desktop) ───────────────────────────────────────────
   const wheelAccum = useRef(0);
@@ -32,21 +25,11 @@ export function useSwipe(
   const WHEEL_TIMEOUT = 300;
 
   useEffect(() => {
-    const hasCoarsePointer = typeof window.matchMedia === 'function'
-      ? window.matchMedia('(pointer: coarse)').matches
-      : false;
-    const hasTouchPoints = typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0;
-    const hasTouchEvent = typeof window !== 'undefined' && 'ontouchstart' in window;
-    isTouchLikeRef.current = hasCoarsePointer || hasTouchPoints || hasTouchEvent;
-  }, []);
-
-  useEffect(() => {
     const el = containerRef?.current;
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      if (isTouchLikeRef.current) return;
       if (isAnimating) return;
 
       wheelAccum.current += e.deltaY;
@@ -79,49 +62,32 @@ export function useSwipe(
 
   // ── Touch handlers (unchanged) ────────────────────────────────────────
   const onTouchStart = useCallback((e: React.TouchEvent) => {
-    if (isAnimating || Date.now() < gestureLockUntil.current) {
-      dragActive.current = false;
-      e.preventDefault();
-      return;
-    }
+    if (isAnimating) return;
     ty0.current = e.touches[0].clientY;
     tx0.current = e.touches[0].clientX;
-    t0.current = Date.now();
     dragActive.current = true;
     e.preventDefault();
   }, [isAnimating]);
 
   const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!dragActive.current) return;
-    if (isAnimating) {
-      e.preventDefault();
-      return;
-    }
+    if (!dragActive.current || isAnimating) return;
     const dy = e.touches[0].clientY - ty0.current;
     onDragMove?.(dy);
     e.preventDefault();
   }, [isAnimating, onDragMove]);
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (isAnimating) return;
     dragActive.current = false;
-    if (isAnimating || Date.now() < gestureLockUntil.current) return;
     const dy = e.changedTouches[0].clientY - ty0.current;
     const dx = e.changedTouches[0].clientX - tx0.current;
-    const absDy = Math.abs(dy);
-    const absDx = Math.abs(dx);
-    const elapsed = Math.max(1, Date.now() - t0.current);
-    const velocity = absDy / elapsed;
-    const mostlyVertical = absDy > absDx * VERTICAL_RATIO;
-    const enoughDistance = absDy >= SWIPE_TRIGGER_PX;
-    const isFlick = absDy >= MIN_FLICK_PX && velocity >= FLICK_VELOCITY_PX_PER_MS;
 
     // Ignore short or mostly-horizontal gestures.
-    if (!mostlyVertical || (!enoughDistance && !isFlick)) {
+    if (Math.abs(dy) < 55 || Math.abs(dy) < Math.abs(dx)) {
       onGestureEnd?.(false);
       return;
     }
 
-    gestureLockUntil.current = Date.now() + 280;
     onGestureEnd?.(true);
     if (dy < 0) onSwipeUp();
     else onSwipeDown();
