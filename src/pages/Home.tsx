@@ -1307,6 +1307,7 @@ export default function Home({ onNav }: Props) {
     isAnimating,
     onDragMove,
     onGestureEnd,
+    feedContainerRef,
   );
 
   // Record view

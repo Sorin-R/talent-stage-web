@@ -17,6 +17,7 @@ export function useSwipe(
   const ty0 = useRef(0);
   const tx0 = useRef(0);
   const dragActive = useRef(false);
+  const swipeThresholdRef = useRef(55);
 
   // ── Wheel support (desktop) ───────────────────────────────────────────
   const wheelAccum = useRef(0);
@@ -65,6 +66,9 @@ export function useSwipe(
     if (isAnimating) return;
     ty0.current = e.touches[0].clientY;
     tx0.current = e.touches[0].clientX;
+    const h = (e.currentTarget as HTMLElement | null)?.clientHeight || window.innerHeight || 0;
+    // Commit only after crossing feed center; otherwise snap back.
+    swipeThresholdRef.current = Math.max(55, Math.floor(h * 0.5));
     dragActive.current = true;
     e.preventDefault();
   }, [isAnimating]);
@@ -83,7 +87,7 @@ export function useSwipe(
     const dx = e.changedTouches[0].clientX - tx0.current;
 
     // Ignore short or mostly-horizontal gestures.
-    if (Math.abs(dy) < 55 || Math.abs(dy) < Math.abs(dx)) {
+    if (Math.abs(dy) < swipeThresholdRef.current || Math.abs(dy) < Math.abs(dx)) {
       onGestureEnd?.(false);
       return;
     }
