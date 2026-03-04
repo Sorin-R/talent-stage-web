@@ -28,6 +28,7 @@ const DRAG_FRAME_CAPTURE_THROTTLE_MS = 66;
 const OVERLAY_FRAME_CACHE_LIMIT = 20;
 const OVERLAY_THUMB_CACHE_LIMIT = 40;
 const IOS_OVERLAY_MIN_REVEAL_DELAY_MS = 90;
+const SWIPE_LOCK_SECONDS = 5;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -78,6 +79,7 @@ export default function Home({ onNav }: Props) {
   const [isPaused, setIsPaused] = useState(false);
   const [playbackIndicator, setPlaybackIndicator] = useState<'play' | 'pause' | null>(null);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [swipeCountdown, setSwipeCountdown] = useState(0);
   const [muteBtnTop, setMuteBtnTop] = useState<number | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
   const [forceOverlayMode, setForceOverlayMode] = useState<boolean | null>(null);
@@ -113,6 +115,8 @@ export default function Home({ onNav }: Props) {
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastCaptureTimeRef = useRef(0);
   const pausedByScrollRef = useRef(false);
+  const swipeLockUntilRef = useRef(0);
+  const swipeCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const watchMilestonesRef = useRef<Set<number>>(new Set());
   const lastWatchPctRef = useRef<number>(0);
   const watchStartedAtRef = useRef<number>(Date.now());
@@ -468,6 +472,7 @@ export default function Home({ onNav }: Props) {
       if (playbackIndicatorTimer.current) clearTimeout(playbackIndicatorTimer.current);
       if (startupRetryTimer.current) clearTimeout(startupRetryTimer.current);
       if (startupPlayWatchdog.current) clearInterval(startupPlayWatchdog.current);
+      if (swipeCountdownTimerRef.current) clearInterval(swipeCountdownTimerRef.current);
       if (searchTimer.current) clearTimeout(searchTimer.current);
       if (creatorSearchTimer.current) clearTimeout(creatorSearchTimer.current);
       for (const el of preloadWindowRef.current.values()) {
@@ -480,6 +485,42 @@ export default function Home({ onNav }: Props) {
       void releaseWakeLock();
     };
   }, [releaseWakeLock]);
+
+  useEffect(() => {
+    if (swipeCountdownTimerRef.current) {
+      clearInterval(swipeCountdownTimerRef.current);
+      swipeCountdownTimerRef.current = null;
+    }
+
+    if (!currentVideo) {
+      swipeLockUntilRef.current = 0;
+      setSwipeCountdown(0);
+      return;
+    }
+
+    swipeLockUntilRef.current = Date.now() + SWIPE_LOCK_SECONDS * 1000;
+    setSwipeCountdown(SWIPE_LOCK_SECONDS);
+
+    swipeCountdownTimerRef.current = setInterval(() => {
+      const remainingMs = swipeLockUntilRef.current - Date.now();
+      if (remainingMs <= 0) {
+        if (swipeCountdownTimerRef.current) {
+          clearInterval(swipeCountdownTimerRef.current);
+          swipeCountdownTimerRef.current = null;
+        }
+        setSwipeCountdown(0);
+        return;
+      }
+      setSwipeCountdown(Math.ceil(remainingMs / 1000));
+    }, 120);
+
+    return () => {
+      if (swipeCountdownTimerRef.current) {
+        clearInterval(swipeCountdownTimerRef.current);
+        swipeCountdownTimerRef.current = null;
+      }
+    };
+  }, [currentVideo?.id, currentVideo]);
 
   const overlayCurrentImage = getOverlayImageForVideo(currentVideo);
   const overlayNextImage = getOverlayImageForVideo(stripNext);
@@ -1101,6 +1142,8 @@ export default function Home({ onNav }: Props) {
 
   // ── Commit swipe ─────────────────────────────────────────────────────────
   const goNext = useCallback((type: 'like' | 'dislike') => {
+    if (swipeCountdown > 0) return;
+
     // Interrupt and clean any previous swipe transaction/timers.
     pendingSwipeRef.current = null;
     if (slideTimer.current) {
@@ -1322,25 +1365,28 @@ export default function Home({ onNav }: Props) {
     }, 3000);
   }, [
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
-    getNextPlayableIndex, getPlaybackMetrics, isIOSDevice, loggedIn,
+    getNextPlayableIndex, getPlaybackMetrics, isIOSDevice, loggedIn, swipeCountdown,
     primeInactive, resetOverlaySwipeState, setFeedVideos, skipToNextPlayable, trackVideoSignal,
     captureActiveFrame, forceOverlayMode, getActiveRef, getOverlayImageForVideo, isOverlayImageReady, settlePreloadedVideo,
   ]);
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (swipeCountdown > 0) return;
     if (isAnimating) return;
     if (Math.abs(e.deltaY) < WHEEL_THRESHOLD) return;
     if (wheelTimer.current) return;
     wheelTimer.current = setTimeout(() => { wheelTimer.current = null; }, WHEEL_DEBOUNCE_MS);
     if (e.deltaY > 0) goNext('like');
     else goNext('dislike');
-  }, [goNext, isAnimating]);
+  }, [goNext, isAnimating, swipeCountdown]);
+
+  const swipeInteractionBlocked = isAnimating || swipeCountdown > 0;
 
   const { onTouchStart, onTouchMove, onTouchEnd } = useSwipe(
     () => goNext('like'),
     () => goNext('dislike'),
-    isAnimating,
+    swipeInteractionBlocked,
     onDragMove,
     onGestureEnd,
     feedContainerRef,
@@ -1923,6 +1969,11 @@ export default function Home({ onNav }: Props) {
                 >
                   Tap to play
                 </button>
+              </div>
+            )}
+            {swipeCountdown > 0 && (
+              <div className="swipe-lock-timer" aria-hidden>
+                <span>{swipeCountdown}</span>
               </div>
             )}
             <div className={`playback-indicator ${(isPaused || playbackIndicator) ? 'show' : ''}`} aria-hidden>
