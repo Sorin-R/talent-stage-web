@@ -16,8 +16,12 @@ export function useSwipe(
 ): SwipeHandlers {
   const ty0 = useRef(0);
   const tx0 = useRef(0);
+  const t0 = useRef(0);
+  const gestureLockUntil = useRef(0);
   const dragActive = useRef(false);
-  const SWIPE_TRIGGER_PX = 72;
+  const SWIPE_TRIGGER_PX = 78;
+  const MIN_FLICK_PX = 26;
+  const FLICK_VELOCITY_PX_PER_MS = 0.65;
   const isTouchLikeRef = useRef(false);
 
   // ── Wheel support (desktop) ───────────────────────────────────────────
@@ -74,13 +78,14 @@ export function useSwipe(
 
   // ── Touch handlers (unchanged) ────────────────────────────────────────
   const onTouchStart = useCallback((e: React.TouchEvent) => {
-    if (isAnimating) {
+    if (isAnimating || Date.now() < gestureLockUntil.current) {
       dragActive.current = false;
       e.preventDefault();
       return;
     }
     ty0.current = e.touches[0].clientY;
     tx0.current = e.touches[0].clientX;
+    t0.current = Date.now();
     dragActive.current = true;
     e.preventDefault();
   }, [isAnimating]);
@@ -98,20 +103,28 @@ export function useSwipe(
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
     dragActive.current = false;
-    if (isAnimating) return;
+    if (isAnimating || Date.now() < gestureLockUntil.current) return;
     const dy = e.changedTouches[0].clientY - ty0.current;
     const dx = e.changedTouches[0].clientX - tx0.current;
+    const absDy = Math.abs(dy);
+    const absDx = Math.abs(dx);
+    const elapsed = Math.max(1, Date.now() - t0.current);
+    const velocity = absDy / elapsed;
+    const mostlyVertical = absDy > absDx;
+    const enoughDistance = absDy >= SWIPE_TRIGGER_PX;
+    const isFlick = absDy >= MIN_FLICK_PX && velocity >= FLICK_VELOCITY_PX_PER_MS;
 
     // Ignore short or mostly-horizontal gestures.
-    if (Math.abs(dy) < SWIPE_TRIGGER_PX || Math.abs(dy) < Math.abs(dx)) {
+    if (!mostlyVertical || (!enoughDistance && !isFlick)) {
       onGestureEnd?.(false);
       return;
     }
 
+    gestureLockUntil.current = Date.now() + 280;
     onGestureEnd?.(true);
     if (dy < 0) onSwipeUp();
     else onSwipeDown();
-  }, [isAnimating, onSwipeUp, onSwipeDown, onGestureEnd, SWIPE_TRIGGER_PX]);
+  }, [isAnimating, onSwipeUp, onSwipeDown, onGestureEnd]);
 
   return { onTouchStart, onTouchMove, onTouchEnd };
 }

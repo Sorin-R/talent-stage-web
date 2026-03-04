@@ -14,14 +14,14 @@ const SEARCH_ICON = '/icons/search.png';
 const MENU_ICON = '/icons/menu.png';
 const PLAY_OVERLAY_ICON = '/icons/play.png';
 const PAUSE_OVERLAY_ICON = '/icons/pause.png';
-const SLIDE_MS = 200;
+const SLIDE_MS = 240;
 const SLIDE_EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
 const TITLE_PREVIEW_CHARS = 35;
 const CREATOR_HANDLE_MAX = 20;
 const CREATOR_HANDLE_TRUNCATED = 17;
 const WHEEL_THRESHOLD = 30;
 const WHEEL_DEBOUNCE_MS = 400;
-const SWIPE_COOLDOWN_MS = 260;
+const SWIPE_COOLDOWN_MS = 320;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -852,6 +852,7 @@ export default function Home({ onNav }: Props) {
   const goNext = useCallback((type: 'like' | 'dislike') => {
     if (!currentVideo || isAnimating || isAnimatingRef.current) return;
     if (Date.now() < swipeLockUntilRef.current) return;
+    if (pendingSwipeRef.current) return;
     const nextIdx = getNextPlayableIndex();
     if (nextIdx === null || nextIdx === feedIndex) return;
     const nextVideo = feedVideos[nextIdx];
