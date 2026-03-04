@@ -83,6 +83,7 @@ export default function Home({ onNav }: Props) {
   const slotJustSwapped   = useRef(false);
   const pendingSwipeRef   = useRef<PendingSwipe | null>(null);
   const isAnimatingRef    = useRef(false);
+  const isTouchLikeRef    = useRef(false);
   const swipeLockUntilRef = useRef(0);
   const videoErrorCountRef = useRef<Record<string, number>>({});
   const swipeTxnRef       = useRef(0);
@@ -148,6 +149,15 @@ export default function Home({ onNav }: Props) {
     } catch {
       // ignored
     }
+  }, []);
+
+  useEffect(() => {
+    const hasCoarsePointer = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(pointer: coarse)').matches
+      : false;
+    const hasTouchPoints = typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0;
+    const hasTouchEvent = typeof window !== 'undefined' && 'ontouchstart' in window;
+    isTouchLikeRef.current = hasCoarsePointer || hasTouchPoints || hasTouchEvent;
   }, []);
 
   // Track container height so strip slots are exactly the right size
@@ -989,6 +999,7 @@ export default function Home({ onNav }: Props) {
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (isTouchLikeRef.current) return;
     if (isAnimating || isAnimatingRef.current) return;
     if (Date.now() < swipeLockUntilRef.current) return;
     if (Math.abs(e.deltaY) < WHEEL_THRESHOLD) return;

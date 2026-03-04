@@ -17,6 +17,8 @@ export function useSwipe(
   const ty0 = useRef(0);
   const tx0 = useRef(0);
   const dragActive = useRef(false);
+  const SWIPE_TRIGGER_PX = 72;
+  const isTouchLikeRef = useRef(false);
 
   // ── Wheel support (desktop) ───────────────────────────────────────────
   const wheelAccum = useRef(0);
@@ -25,11 +27,21 @@ export function useSwipe(
   const WHEEL_TIMEOUT = 300;
 
   useEffect(() => {
+    const hasCoarsePointer = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(pointer: coarse)').matches
+      : false;
+    const hasTouchPoints = typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0;
+    const hasTouchEvent = typeof window !== 'undefined' && 'ontouchstart' in window;
+    isTouchLikeRef.current = hasCoarsePointer || hasTouchPoints || hasTouchEvent;
+  }, []);
+
+  useEffect(() => {
     const el = containerRef?.current;
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      if (isTouchLikeRef.current) return;
       if (isAnimating) return;
 
       wheelAccum.current += e.deltaY;
@@ -83,7 +95,7 @@ export function useSwipe(
     const dx = e.changedTouches[0].clientX - tx0.current;
 
     // Ignore short or mostly-horizontal gestures.
-    if (Math.abs(dy) < 55 || Math.abs(dy) < Math.abs(dx)) {
+    if (Math.abs(dy) < SWIPE_TRIGGER_PX || Math.abs(dy) < Math.abs(dx)) {
       onGestureEnd?.(false);
       return;
     }
@@ -91,7 +103,7 @@ export function useSwipe(
     onGestureEnd?.(true);
     if (dy < 0) onSwipeUp();
     else onSwipeDown();
-  }, [isAnimating, onSwipeUp, onSwipeDown, onGestureEnd]);
+  }, [isAnimating, onSwipeUp, onSwipeDown, onGestureEnd, SWIPE_TRIGGER_PX]);
 
   return { onTouchStart, onTouchMove, onTouchEnd };
 }
