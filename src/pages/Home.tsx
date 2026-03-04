@@ -125,10 +125,14 @@ export default function Home({ onNav }: Props) {
     });
   }, [feedMuted]);
 
-  const tryPlayMuted = useCallback((el: HTMLVideoElement | null) => {
+  const settlePreloadedVideo = useCallback((el: HTMLVideoElement | null) => {
     if (!el) return;
-    el.muted = true;
-    void el.play().catch(() => {});
+    try {
+      el.pause();
+      if (el.readyState >= 2) el.currentTime = 0;
+    } catch {
+      // noop
+    }
   }, []);
 
   const preloadOverlayThumb = useCallback((url: string | null | undefined): Promise<boolean> => {
@@ -732,7 +736,7 @@ export default function Home({ onNav }: Props) {
 
     const onReady = () => {
       if (el.dataset.videoId !== nextVid.id || preloadedVideoId.current !== nextVid.id) return;
-      tryPlayMuted(el);
+      settlePreloadedVideo(el);
       setNextVideoReady(true);
     };
     const onError = () => {
@@ -747,7 +751,7 @@ export default function Home({ onNav }: Props) {
       el.removeEventListener('canplay', onReady);
       el.removeEventListener('error', onError);
     };
-  }, [feedIndex, feedVideos, getInactiveRef, getNextPlayableIndex, tryPlayMuted]);
+  }, [feedIndex, feedVideos, getInactiveRef, getNextPlayableIndex, settlePreloadedVideo]);
 
   const showReaction = (type: 'like' | 'dislike') => {
     reactionKey.current++;
@@ -922,8 +926,8 @@ export default function Home({ onNav }: Props) {
     el.muted = true;
     el.preload = 'auto';
     el.load();
-    tryPlayMuted(el);
-  }, [getInactiveRef, tryPlayMuted]);
+    settlePreloadedVideo(el);
+  }, [getInactiveRef, settlePreloadedVideo]);
 
   const finalizeSwipe = useCallback((txn?: number) => {
     const pending = pendingSwipeRef.current;
@@ -947,7 +951,13 @@ export default function Home({ onNav }: Props) {
       if (nowActive) {
         nowActive.loop = true;
         nowActive.muted = feedMuted;
-        if (nowActive.paused) safePlay(nowActive);
+        try {
+          nowActive.pause();
+          nowActive.currentTime = 0;
+        } catch {
+          // noop
+        }
+        safePlay(nowActive);
       }
 
       setFeedIndex(nextIdx);
@@ -969,7 +979,7 @@ export default function Home({ onNav }: Props) {
 
     const onReady = () => {
       if (inactive.dataset.videoId !== nextVideo.id || preloadedVideoId.current !== nextVideo.id) return;
-      tryPlayMuted(inactive);
+      settlePreloadedVideo(inactive);
       setNextVideoReady(true);
       commit();
     };
@@ -987,7 +997,7 @@ export default function Home({ onNav }: Props) {
     };
     inactive.addEventListener('canplay', onReady, { once: true });
     inactive.addEventListener('error', onError, { once: true });
-  }, [feedMuted, getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo, skipToNextPlayable, tryPlayMuted]);
+  }, [feedMuted, getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo, settlePreloadedVideo, skipToNextPlayable]);
 
   // ── Commit swipe ─────────────────────────────────────────────────────────
   const goNext = useCallback((type: 'like' | 'dislike') => {
@@ -1056,9 +1066,6 @@ export default function Home({ onNav }: Props) {
         preloadWaitTimer.current = null;
       }
 
-      // Keep incoming slot hot while strip is moving.
-      tryPlayMuted(getInactiveRef().current);
-
       // Deterministic transition path (no reset->RAF jump).
       setStripDir(pendingDirection);
       setStripNext(pendingVideo);
@@ -1108,7 +1115,7 @@ export default function Home({ onNav }: Props) {
       const pending = pendingSwipeRef.current;
       if (!pending || pending.txn !== txn) return;
       if (waitEl.dataset.videoId !== pending.nextVideo.id || preloadedVideoId.current !== pending.nextVideo.id) return;
-      tryPlayMuted(waitEl);
+      settlePreloadedVideo(waitEl);
       setNextVideoReady(true);
       startTransition();
     };
@@ -1141,7 +1148,7 @@ export default function Home({ onNav }: Props) {
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
     getNextPlayableIndex, getPlaybackMetrics, isAnimating, loggedIn,
     primeInactive, setFeedVideos, skipToNextPlayable, trackVideoSignal,
-    captureActiveFrame, getActiveRef, tryPlayMuted,
+    captureActiveFrame, getActiveRef, settlePreloadedVideo,
   ]);
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
