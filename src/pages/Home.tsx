@@ -1775,11 +1775,13 @@ export default function Home({ onNav }: Props) {
               Two video elements swap active/inactive roles to avoid src-swap flicker.
             */}
             <div
+              className="feed-strip"
               style={stripStyle}
               onTransitionEnd={usePosterOverlaySwipe ? undefined : handleSwipeTransitionEnd}
             >
               <video
                 ref={videoRefA}
+                className="feed-slot-video"
                 style={videoStyle('A')}
                 loop
                 playsInline
@@ -1819,6 +1821,7 @@ export default function Home({ onNav }: Props) {
               />
               <video
                 ref={videoRefB}
+                className="feed-slot-video"
                 style={videoStyle('B')}
                 loop
                 playsInline

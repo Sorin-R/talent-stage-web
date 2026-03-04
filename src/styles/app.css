@@ -334,6 +334,18 @@ button {
     border-radius: 0;
     touch-action: none;
     overscroll-behavior: none;
+    scroll-snap-type: y mandatory;
+    scroll-padding-top: 0;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+}
+.feed-container .feed-strip {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+}
+.feed-container .feed-slot-video {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
 }
 .feed-container.cmts-open {
     flex: 0 0 38% !important;
