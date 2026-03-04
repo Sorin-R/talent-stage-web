@@ -21,7 +21,7 @@ const CREATOR_HANDLE_MAX = 20;
 const CREATOR_HANDLE_TRUNCATED = 17;
 const WHEEL_THRESHOLD = 30;
 const WHEEL_DEBOUNCE_MS = 400;
-const SWIPE_COOLDOWN_MS = 260;
+const SWIPE_COOLDOWN_MS = 100;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -820,6 +820,7 @@ export default function Home({ onNav }: Props) {
       commit();
     };
     const onError = () => {
+      if (preloadWaitTimer.current) { clearTimeout(preloadWaitTimer.current); preloadWaitTimer.current = null; }
       const activePending = pendingSwipeRef.current;
       if (!activePending || activePending.txn !== pendingTxn) return;
       pendingSwipeRef.current = null;
@@ -834,6 +835,16 @@ export default function Home({ onNav }: Props) {
     };
     inactive.addEventListener('canplay', onReady, { once: true });
     inactive.addEventListener('error', onError, { once: true });
+
+    // Safety timeout — force commit if video never finishes loading
+    if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
+    preloadWaitTimer.current = setTimeout(() => {
+      inactive.removeEventListener('canplay', onReady);
+      inactive.removeEventListener('error', onError);
+      const ap = pendingSwipeRef.current;
+      if (!ap || ap.txn !== pendingTxn) return;
+      commit();
+    }, 3000);
   }, [clearStrip, getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo]);
 
   // ── Commit swipe ─────────────────────────────────────────────────────────
@@ -928,69 +939,12 @@ export default function Home({ onNav }: Props) {
 
     if (readyNow) {
       setNextVideoReady(true);
-      startTransition();
-      return;
-    }
-
-    // Keep current frame visible while we wait for next decode readiness.
-    setStripSnap(false);
-    setStripOffset(0);
-    setStripDir(null);
-    setStripNext(null);
-
-    if (slideTimer.current) clearTimeout(slideTimer.current);
-    if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
-
-    if (!inactive || preloadedVideoId.current !== nextVideo.id || inactive.readyState < 2) {
+    } else if (!inactive || preloadedVideoId.current !== nextVideo.id || inactive.readyState < 2) {
       primeInactive(nextVideo);
     }
 
-    const waitEl = getInactiveRef().current;
-    if (!waitEl) {
-      pendingSwipeRef.current = null;
-      isAnimatingRef.current = false;
-      setIsAnimating(false);
-      return;
-    }
-
-    const cancelSwipe = (markAsFailed: boolean) => {
-      if (preloadWaitTimer.current) {
-        clearTimeout(preloadWaitTimer.current);
-        preloadWaitTimer.current = null;
-      }
-      const pending = pendingSwipeRef.current;
-      if (!pending || pending.txn !== txn) return;
-      pendingSwipeRef.current = null;
-      if (markAsFailed) failedVideos.current.add(nextVideo.id);
-      clearStrip();
-      setNextVideoReady(false);
-      isAnimatingRef.current = false;
-      swipeLockUntilRef.current = Date.now() + SWIPE_COOLDOWN_MS;
-      setIsAnimating(false);
-      const active = getActiveRef().current;
-      if (active && active.paused) safePlay(active);
-    };
-
-    const onReady = () => {
-      const pending = pendingSwipeRef.current;
-      if (!pending || pending.txn !== txn) return;
-      if (waitEl.dataset.videoId !== nextVideo.id || preloadedVideoId.current !== nextVideo.id) return;
-      waitEl.pause();
-      waitEl.currentTime = 0;
-      setNextVideoReady(true);
-      startTransition();
-    };
-
-    const onError = () => {
-      cancelSwipe(true);
-    };
-
-    waitEl.addEventListener('canplay', onReady, { once: true });
-    waitEl.addEventListener('error', onError, { once: true });
-
-    preloadWaitTimer.current = setTimeout(() => {
-      cancelSwipe(false);
-    }, 3000);
+    // Always animate immediately — finalizeSwipe handles the load-wait
+    startTransition();
   }, [
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
     getNextPlayableIndex, getPlaybackMetrics, isAnimating, loggedIn,
