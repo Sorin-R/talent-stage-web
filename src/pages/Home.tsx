@@ -22,9 +22,7 @@ const CREATOR_HANDLE_TRUNCATED = 17;
 const WHEEL_THRESHOLD = 30;
 const WHEEL_DEBOUNCE_MS = 400;
 const SWIPE_COOLDOWN_MS = 320;
-const SWIPE_READY_TIMEOUT_MS = 2200;
-const TAP_SUPPRESS_AFTER_SWIPE_MS = 360;
-const PRELOAD_AHEAD_COUNT = 2;
+const VELOCITY_SCALE = 30; // Tune: higher = more sensitive to speed
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -65,6 +63,7 @@ export default function Home({ onNav }: Props) {
   const [stripDir,    setStripDir]      = useState<'up' | 'down' | null>(null); // swipe direction
   const [stripNext,   setStripNext]     = useState<Video | null>(null);        // video peeking in
   const [stripSnap,   setStripSnap]     = useState(false);                     // true = CSS transition active
+  const [slideDuration, setSlideDuration] = useState(SLIDE_MS);               // Dynamic duration for velocity
 
   const [containerH,  setContainerH]   = useState(844);   // feed-container height, updated by ResizeObserver
   const [, setNextVideoReady] = useState(false);
@@ -81,6 +80,7 @@ export default function Home({ onNav }: Props) {
   const titleRowRef       = useRef<HTMLDivElement>(null);
   const videoRefA         = useRef<HTMLVideoElement>(null);
   const videoRefB         = useRef<HTMLVideoElement>(null);
+  const stripRef          = useRef<HTMLDivElement>(null);
   const activeSlot        = useRef<'A' | 'B'>('A');
   const preloadedVideoId  = useRef<string | null>(null);
   const slotJustSwapped   = useRef(false);
@@ -90,8 +90,6 @@ export default function Home({ onNav }: Props) {
   const swipeLockUntilRef = useRef(0);
   const videoErrorCountRef = useRef<Record<string, number>>({});
   const swipeTxnRef       = useRef(0);
-  const activeSwipeTxnRef = useRef(0);
-  const suppressTapUntilRef = useRef(0);
   const reactionKey       = useRef(0);
   const searchTimer       = useRef<ReturnType<typeof setTimeout> | null>(null);
   const creatorSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -109,8 +107,7 @@ export default function Home({ onNav }: Props) {
   const watchStartedAtRef = useRef<number>(Date.now());
   const completionSentRef = useRef<boolean>(false);
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
-  const aheadPreloadRef = useRef<HTMLVideoElement | null>(null);
-  const aheadPreloadedVideoId = useRef<string | null>(null);
+  const lastTouchRef = useRef<{ y: number; time: number; velocity: number }>({ y: 0, time: 0, velocity: 0 });
 
   const getActiveRef = useCallback(() =>
     activeSlot.current === 'A' ? videoRefA : videoRefB, []);
@@ -233,8 +230,6 @@ export default function Home({ onNav }: Props) {
     failedVideos.current.clear();
     preloadedVideoId.current = null;
     pendingSwipeRef.current = null;
-    activeSwipeTxnRef.current = 0;
-    suppressTapUntilRef.current = 0;
     setNextVideoReady(false);
     activeSlot.current = 'A';
     slotJustSwapped.current = false;
@@ -365,14 +360,6 @@ export default function Home({ onNav }: Props) {
       if (startupPlayWatchdog.current) clearInterval(startupPlayWatchdog.current);
       if (searchTimer.current) clearTimeout(searchTimer.current);
       if (creatorSearchTimer.current) clearTimeout(creatorSearchTimer.current);
-      const ahead = aheadPreloadRef.current;
-      if (ahead) {
-        ahead.pause();
-        ahead.removeAttribute('src');
-        ahead.load();
-        aheadPreloadRef.current = null;
-        aheadPreloadedVideoId.current = null;
-      }
       void releaseWakeLock();
     };
   }, [releaseWakeLock]);
@@ -412,9 +399,11 @@ export default function Home({ onNav }: Props) {
     if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
     if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
     setStripOffset(0);
+    if (stripRef.current) stripRef.current.style.transform = 'translateY(0px)';
     setStripDir(null);
     setStripNext(null);
     setStripSnap(false);
+    setSlideDuration(SLIDE_MS);
   }, []);
 
   // ── Next-playable index ──────────────────────────────────────────────────
@@ -427,24 +416,11 @@ export default function Home({ onNav }: Props) {
     return null;
   }, [feedVideos, feedIndex]);
 
-  const getPlayableIndexAtOffset = useCallback((offset: number): number | null => {
-    if (feedVideos.length === 0 || offset <= 0) return null;
-    let found = 0;
-    for (let i = 1; i <= feedVideos.length; i++) {
-      const idx = (feedIndex + i) % feedVideos.length;
-      if (failedVideos.current.has(feedVideos[idx].id)) continue;
-      found += 1;
-      if (found === offset) return idx;
-    }
-    return null;
-  }, [feedVideos, feedIndex]);
-
   // ── Skip on error ────────────────────────────────────────────────────────
   const skipToNextPlayable = useCallback(() => {
     if (feedVideos.length === 0) return;
     preloadedVideoId.current = null;
     pendingSwipeRef.current = null;
-    activeSwipeTxnRef.current = 0;
     isAnimatingRef.current = false;
     setNextVideoReady(false);
     for (let i = 1; i <= feedVideos.length; i++) {
@@ -586,7 +562,7 @@ export default function Home({ onNav }: Props) {
     preloadedVideoId.current = nextVid.id;
     setNextVideoReady(false);
     el.dataset.videoId = nextVid.id;
-    el.poster = nextVid.thumbnail_url || '';
+    el.poster = nextVid.thumbnail_url || ''; // Assuming thumbnail_url is low-res preview
     el.src = nextVid.file_url;
     el.muted = true;
     el.preload = 'auto';
@@ -611,22 +587,6 @@ export default function Home({ onNav }: Props) {
       el.removeEventListener('error', onError);
     };
   }, [feedIndex, feedVideos, getInactiveRef, getNextPlayableIndex]);
-
-  // Keep one extra video (N+2) warmed in a detached element for fast swipes.
-  useEffect(() => {
-    const aheadIdx = getPlayableIndexAtOffset(PRELOAD_AHEAD_COUNT);
-    if (aheadIdx === null || aheadIdx === feedIndex) return;
-    const aheadVideo = feedVideos[aheadIdx];
-    if (!aheadVideo || aheadPreloadedVideoId.current === aheadVideo.id) return;
-
-    const preloader = aheadPreloadRef.current ?? document.createElement('video');
-    aheadPreloadRef.current = preloader;
-    aheadPreloadedVideoId.current = aheadVideo.id;
-    preloader.muted = true;
-    preloader.preload = 'metadata';
-    preloader.src = aheadVideo.file_url;
-    preloader.load();
-  }, [feedIndex, feedVideos, getPlayableIndexAtOffset]);
 
   const showReaction = (type: 'like' | 'dislike') => {
     reactionKey.current++;
@@ -654,7 +614,6 @@ export default function Home({ onNav }: Props) {
   const toggleVideoPlayback = useCallback(() => {
     const active = getActiveRef().current;
     if (!active || isAnimating || isAnimatingRef.current) return;
-    if (Date.now() < suppressTapUntilRef.current) return;
     if (active.paused) {
       hidePlaybackIndicator();
       setIsPaused(false);
@@ -767,6 +726,9 @@ export default function Home({ onNav }: Props) {
 
     setStripSnap(false);
     setStripOffset(clamped);
+    if (stripRef.current && !stripSnap) {
+      stripRef.current.style.transform = `translateY(${clamped}px) translate3d(0,0,0)`;
+    }
 
     if (clamped < 0) {
       setStripDir('up');
@@ -784,19 +746,23 @@ export default function Home({ onNav }: Props) {
   const onGestureEnd = useCallback((didSwipe: boolean) => {
     if (isAnimatingRef.current || isAnimating) return;
     if (didSwipe) {
-      suppressTapUntilRef.current = Date.now() + TAP_SUPPRESS_AFTER_SWIPE_MS;
       setStripSnap(false); // goNext will drive the rest
       return;
     }
     if (!stripNext && stripOffset === 0) return;
     // Animate strip back to resting position
+    setSlideDuration(220); // Fixed for snap-back
     setStripSnap(true);
     setStripOffset(0);
+    if (stripRef.current) {
+      stripRef.current.style.transform = 'translateY(0px) translate3d(0,0,0)';
+    }
     if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
     snapBackTimer.current = setTimeout(() => {
       setStripDir(null);
       setStripNext(null);
       setStripSnap(false);
+      setSlideDuration(SLIDE_MS);
     }, 220);
   }, [isAnimating, stripNext, stripOffset]);
 
@@ -826,36 +792,12 @@ export default function Home({ onNav }: Props) {
     const inactive = getInactiveRef().current;
     if (!inactive) return;
 
-    const cancelAndRestore = (markFailed = false) => {
-      const activePending = pendingSwipeRef.current;
-      if (!activePending || activePending.txn !== pendingTxn) return;
-      pendingSwipeRef.current = null;
-      activeSwipeTxnRef.current = 0;
-      if (slideTimer.current) clearTimeout(slideTimer.current);
-      if (preloadWaitTimer.current) {
-        clearTimeout(preloadWaitTimer.current);
-        preloadWaitTimer.current = null;
-      }
-      clearStrip();
-      isAnimatingRef.current = false;
-      swipeLockUntilRef.current = Date.now() + SWIPE_COOLDOWN_MS;
-      setIsAnimating(false);
-      setNextVideoReady(false);
-      if (markFailed) failedVideos.current.add(nextVideo.id);
-      const active = getActiveRef().current;
-      if (active && active.paused) safePlay(active);
-    };
-
     const commit = () => {
       const activePending = pendingSwipeRef.current;
       if (!activePending || activePending.txn !== pendingTxn) return;
       pendingSwipeRef.current = null;
-      activeSwipeTxnRef.current = 0;
       if (slideTimer.current) clearTimeout(slideTimer.current);
-      if (preloadWaitTimer.current) {
-        clearTimeout(preloadWaitTimer.current);
-        preloadWaitTimer.current = null;
-      }
+      if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
       const previousActive = getActiveRef().current;
       activeSlot.current = activeSlot.current === 'A' ? 'B' : 'A';
       previousActive?.pause();
@@ -871,6 +813,7 @@ export default function Home({ onNav }: Props) {
       setFeedIndex(nextIdx);
       setCurrentVideo(nextVideo);
       setStripOffset(0);
+      if (stripRef.current) stripRef.current.style.transform = 'translateY(0px) translate3d(0,0,0)';
       setStripDir(null);
       setStripNext(null);
       setStripSnap(false);
@@ -878,6 +821,7 @@ export default function Home({ onNav }: Props) {
       swipeLockUntilRef.current = Date.now() + SWIPE_COOLDOWN_MS;
       setIsAnimating(false);
       setNextVideoReady(false);
+      setSlideDuration(SLIDE_MS); // Reset duration
     };
 
     if (preloadedVideoId.current === nextVideo.id && inactive.readyState >= 2) {
@@ -893,18 +837,31 @@ export default function Home({ onNav }: Props) {
       commit();
     };
     const onError = () => {
-      cancelAndRestore(true);
+      if (preloadWaitTimer.current) { clearTimeout(preloadWaitTimer.current); preloadWaitTimer.current = null; }
+      const activePending = pendingSwipeRef.current;
+      if (!activePending || activePending.txn !== pendingTxn) return;
+      pendingSwipeRef.current = null;
+      clearStrip();
+      isAnimatingRef.current = false;
+      swipeLockUntilRef.current = Date.now() + SWIPE_COOLDOWN_MS;
+      setIsAnimating(false);
+      setNextVideoReady(false);
+      failedVideos.current.add(nextVideo.id);
+      const active = getActiveRef().current;
+      if (active && active.paused) safePlay(active);
     };
     inactive.addEventListener('canplay', onReady, { once: true });
     inactive.addEventListener('error', onError, { once: true });
 
-    // Hold until ready; if it stalls, cancel swipe and keep current video.
+    // Safety timeout — force commit if video never finishes loading
     if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
     preloadWaitTimer.current = setTimeout(() => {
       inactive.removeEventListener('canplay', onReady);
       inactive.removeEventListener('error', onError);
-      cancelAndRestore(false);
-    }, SWIPE_READY_TIMEOUT_MS);
+      const ap = pendingSwipeRef.current;
+      if (!ap || ap.txn !== pendingTxn) return;
+      commit();
+    }, 3000);
   }, [clearStrip, getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo]);
 
   // ── Commit swipe ─────────────────────────────────────────────────────────
@@ -930,8 +887,13 @@ export default function Home({ onNav }: Props) {
     const target = dir === 'up' ? -h : h;
     const txn = ++swipeTxnRef.current;
 
+    // Calculate velocity-based duration
+    const velocity = Math.abs(lastTouchRef.current.velocity);
+    const dur = Math.max(120, SLIDE_MS - velocity * VELOCITY_SCALE);
+    setSlideDuration(dur);
+
     isAnimatingRef.current = true;
-    swipeLockUntilRef.current = Date.now() + SLIDE_MS + SWIPE_COOLDOWN_MS;
+    swipeLockUntilRef.current = Date.now() + dur + SWIPE_COOLDOWN_MS;
     setIsAnimating(true);
     setVideoVoted(true);
     if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
@@ -961,7 +923,6 @@ export default function Home({ onNav }: Props) {
       direction: dir,
       animationStarted: false,
     };
-    activeSwipeTxnRef.current = txn;
 
     const startTransition = () => {
       const pending = pendingSwipeRef.current;
@@ -975,6 +936,9 @@ export default function Home({ onNav }: Props) {
       if (stripNext && stripDir === dir) {
         setStripSnap(true);
         setStripOffset(target);
+        if (stripRef.current) {
+          stripRef.current.style.transform = `translateY(${target}px) translate3d(0,0,0)`;
+        }
       } else {
         setStripDir(dir);
         setStripNext(nextVideo);
@@ -984,13 +948,16 @@ export default function Home({ onNav }: Props) {
           if (!activePending || activePending.txn !== txn) return;
           setStripSnap(true);
           setStripOffset(target);
+          if (stripRef.current) {
+            stripRef.current.style.transform = `translateY(${target}px) translate3d(0,0,0)`;
+          }
         });
       }
 
       if (slideTimer.current) clearTimeout(slideTimer.current);
       slideTimer.current = setTimeout(() => {
         finalizeSwipe(txn);
-      }, SLIDE_MS + 140);
+      }, dur + 140);
     };
 
     const inactive = getInactiveRef().current;
@@ -1025,13 +992,34 @@ export default function Home({ onNav }: Props) {
     else goNext('dislike');
   }, [goNext, isAnimating]);
 
-  const { onTouchStart, onTouchMove, onTouchEnd } = useSwipe(
+  const { onTouchStart: origTouchStart, onTouchMove: origTouchMove, onTouchEnd: origTouchEnd } = useSwipe(
     () => goNext('like'),
     () => goNext('dislike'),
     isAnimating,
     onDragMove,
     onGestureEnd,
   );
+
+  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    lastTouchRef.current = { y: e.touches[0].clientY, time: Date.now(), velocity: 0 };
+    origTouchStart(e);
+  }, [origTouchStart]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    const { y: lastY, time: lastTime } = lastTouchRef.current;
+    const y = e.touches[0].clientY;
+    const time = Date.now();
+    const dy = y - lastY;
+    const dt = time - lastTime;
+    if (dt > 0) lastTouchRef.current.velocity = dy / dt;
+    lastTouchRef.current.y = y;
+    lastTouchRef.current.time = time;
+    origTouchMove(e);
+  }, [origTouchMove]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    origTouchEnd(e);
+  }, [origTouchEnd]);
 
   // Record view
   const currentVideoId = currentVideo?.id;
@@ -1226,9 +1214,10 @@ export default function Home({ onNav }: Props) {
     overflow: 'visible',
     zIndex: 1,
     background: '#000',
-    transform: `translateY(${stripOffset}px)`,
-    transition: stripSnap ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}` : 'none',
+    transform: `translateY(${stripOffset}px) translate3d(0,0,0)`,
+    transition: stripSnap ? `transform ${slideDuration}ms ${SLIDE_EASE}` : 'none',
     willChange: 'transform',
+    backfaceVisibility: 'hidden',
   };
 
   const videoStyle = (slot: 'A' | 'B'): React.CSSProperties => {
@@ -1238,6 +1227,9 @@ export default function Home({ onNav }: Props) {
         width: '100%', height: containerH, objectFit: 'cover',
         position: 'absolute', left: 0, right: 0, top: 0,
         zIndex: 2, visibility: 'visible', background: '#000',
+        willChange: 'transform, opacity',
+        transform: 'translate3d(0,0,0)',
+        backfaceVisibility: 'hidden',
       };
     }
 
@@ -1249,6 +1241,9 @@ export default function Home({ onNav }: Props) {
       zIndex: showInPeek ? 1 : 0,
       visibility: showInPeek ? 'visible' : 'hidden',
       background: '#000',
+      willChange: 'transform, opacity',
+      transform: 'translate3d(0,0,0)',
+      backfaceVisibility: 'hidden',
     };
   };
 
@@ -1256,7 +1251,7 @@ export default function Home({ onNav }: Props) {
     if (e.target !== e.currentTarget) return;
     if (e.propertyName !== 'transform' || !stripSnap || !isAnimating) return;
     if (slideTimer.current) clearTimeout(slideTimer.current);
-    finalizeSwipe(activeSwipeTxnRef.current || undefined);
+    finalizeSwipe();
   }, [finalizeSwipe, isAnimating, stripSnap]);
 
   const isActiveEl = (e: React.SyntheticEvent<HTMLVideoElement>) =>
@@ -1438,9 +1433,10 @@ export default function Home({ onNav }: Props) {
       <div
         className={`feed-container ${cmtsOpen ? 'cmts-open' : ''}`}
         ref={feedContainerRef}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
+        style={{ contain: 'strict', overscrollBehavior: 'none', touchAction: 'pan-y' }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         onWheel={onWheel}
       >
         <ReactionOverlay type={reaction} key={reactionKey.current} />
@@ -1456,6 +1452,7 @@ export default function Home({ onNav }: Props) {
               Two video elements swap active/inactive roles to avoid src-swap flicker.
             */}
             <div
+              ref={stripRef}
               style={stripStyle}
               onTransitionEnd={handleSwipeTransitionEnd}
             >
