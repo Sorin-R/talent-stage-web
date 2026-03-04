@@ -31,6 +31,7 @@ const DEFAULTS = {
   usernamePrefix: process.env.SEED_USERNAME_PREFIX || 'seeduser',
   videoDir: process.env.SEED_VIDEO_DIR || './uploads/videos',
   delayMs: Number(process.env.SEED_DELAY_MS || 120),
+  uploadTimeoutMs: Number(process.env.SEED_UPLOAD_TIMEOUT_MS || 300000),
 };
 
 function parseArgs(argv) {
@@ -51,6 +52,7 @@ function parseArgs(argv) {
     else if (a === '--username-prefix') out.usernamePrefix = argv[++i];
     else if (a === '--video-dir') out.videoDir = argv[++i];
     else if (a === '--delay-ms') out.delayMs = Number(argv[++i]);
+    else if (a === '--upload-timeout-ms') out.uploadTimeoutMs = Number(argv[++i]);
     else throw new Error(`Unknown arg: ${a}`);
   }
   return out;
@@ -71,6 +73,7 @@ Options:
   --username-prefix <txt>  Username prefix (default: ${DEFAULTS.usernamePrefix})
   --video-dir <path>       Folder with source videos (default: ${DEFAULTS.videoDir})
   --delay-ms <n>           Delay between uploads (default: ${DEFAULTS.delayMs})
+  --upload-timeout-ms <n>  Timeout per upload request (default: ${DEFAULTS.uploadTimeoutMs})
   --dry-run                Validate inputs and show plan only
   --help                   Show this help
 
@@ -118,7 +121,23 @@ async function fileToBlob(filePath) {
 }
 
 async function fetchJson(url, options = {}) {
-  const res = await fetch(url, options);
+  const { timeoutMs: timeoutOption, ...fetchOptions } = options;
+  const timeoutMs = Number(timeoutOption || 0);
+  const controller = timeoutMs > 0 ? new AbortController() : null;
+  let timer = null;
+  if (controller) {
+    timer = setTimeout(() => controller.abort(`timeout_${timeoutMs}ms`), timeoutMs);
+  }
+
+  let res;
+  try {
+    res = await fetch(url, {
+      ...fetchOptions,
+      signal: controller?.signal,
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   const text = await res.text();
   let data = null;
   try {
@@ -182,7 +201,7 @@ async function registerOrLoginUser({ apiBase, index, total, password, emailDomai
   throw new Error(`User ${index + 1} failed (${email}): ${errText}`);
 }
 
-async function uploadOneVideo({ apiBase, token, title, description, talent_type, filePath }) {
+async function uploadOneVideo({ apiBase, token, title, description, talent_type, filePath, timeoutMs }) {
   const form = new FormData();
   form.append('title', title);
   form.append('description', description);
@@ -194,6 +213,7 @@ async function uploadOneVideo({ apiBase, token, title, description, talent_type,
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: form,
+    timeoutMs,
   });
 }
 
@@ -209,6 +229,9 @@ async function main() {
   if (String(args.password).length < 8) throw new Error('--password must be at least 8 characters');
   if (!args.emailDomain.includes('.')) throw new Error('--email-domain must be a domain');
   if (!Number.isFinite(args.delayMs) || args.delayMs < 0) throw new Error('--delay-ms must be >= 0');
+  if (!Number.isFinite(args.uploadTimeoutMs) || args.uploadTimeoutMs <= 0) {
+    throw new Error('--upload-timeout-ms must be > 0');
+  }
 
   const apiBase = normalizeApiBase(args.apiBase);
   const videoDir = path.resolve(process.cwd(), args.videoDir);
@@ -225,6 +248,7 @@ async function main() {
   console.log(`- Video dir:     ${videoDir}`);
   console.log(`- Source videos: ${sourceVideos.length}`);
   console.log(`- Delay:         ${args.delayMs} ms`);
+  console.log(`- Timeout:       ${args.uploadTimeoutMs} ms/upload`);
 
   if (args.dryRun) {
     console.log('\nDry run complete. No users/videos were created.');
@@ -251,20 +275,28 @@ async function main() {
     const videoPath = sourceVideos[i % sourceVideos.length];
     const title = `Seed video ${String(i + 1).padStart(3, '0')}`;
     const description = `Auto-seeded by script for load/testing (${path.basename(videoPath)})`;
-    const res = await uploadOneVideo({
-      apiBase,
-      token: user.token,
-      title,
-      description,
-      talent_type: user.talent_type,
-      filePath: videoPath,
-    });
+    console.log(`[upload ${i + 1}/${args.videos}] start user=${user.username} file=${path.basename(videoPath)}`);
+    let res;
+    try {
+      res = await uploadOneVideo({
+        apiBase,
+        token: user.token,
+        title,
+        description,
+        talent_type: user.talent_type,
+        filePath: videoPath,
+        timeoutMs: args.uploadTimeoutMs,
+      });
+    } catch (err) {
+      failed += 1;
+      console.error(`[upload ${i + 1}/${args.videos}] failed: ${err?.message || err}`);
+      if (args.delayMs > 0) await sleep(args.delayMs);
+      continue;
+    }
 
     if (res.ok) {
       success += 1;
-      if ((i + 1) % 10 === 0 || i === args.videos - 1) {
-        console.log(`[upload ${i + 1}/${args.videos}] ok (success=${success}, failed=${failed})`);
-      }
+      console.log(`[upload ${i + 1}/${args.videos}] ok (success=${success}, failed=${failed})`);
     } else {
       failed += 1;
       const errText = res.data?.error || res.data?.message || JSON.stringify(res.data);
