@@ -24,8 +24,9 @@ const WHEEL_DEBOUNCE_MS = 400;
 const PRELOAD_WINDOW_RADIUS = 3; // 3 above + current + 3 below = 7 videos warmed
 const IOS_SAFE_SWIPE = true;
 const DRAG_FRAME_CAPTURE_MIN_PX = 40;
-const DRAG_FRAME_CAPTURE_THROTTLE_MS = 80;
+const DRAG_FRAME_CAPTURE_THROTTLE_MS = 66;
 const OVERLAY_FRAME_CACHE_LIMIT = 20;
+const OVERLAY_THUMB_CACHE_LIMIT = 40;
 const IOS_OVERLAY_MIN_REVEAL_DELAY_MS = 60;
 
 interface Props {
@@ -79,6 +80,7 @@ export default function Home({ onNav }: Props) {
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [muteBtnTop, setMuteBtnTop] = useState<number | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
+  const [forceOverlayMode, setForceOverlayMode] = useState<boolean | null>(null);
   const [overlayThumbReady, setOverlayThumbReady] = useState({ current: false, next: false });
   const [, setOverlayFrameVersion] = useState(0);
 
@@ -152,7 +154,14 @@ export default function Home({ onNav }: Props) {
       const img = new Image();
       img.decoding = 'async';
       img.onload = () => {
-        overlayThumbCacheRef.current.add(url);
+        const cache = overlayThumbCacheRef.current;
+        if (cache.has(url)) cache.delete(url);
+        cache.add(url);
+        while (cache.size > OVERLAY_THUMB_CACHE_LIMIT) {
+          const oldestKey = cache.values().next().value as string | undefined;
+          if (!oldestKey) break;
+          cache.delete(oldestKey);
+        }
         overlayThumbLoadRef.current.delete(url);
         resolve(true);
       };
@@ -176,6 +185,11 @@ export default function Home({ onNav }: Props) {
   const getOverlayImageForVideo = useCallback((video?: Video | null) => {
     if (!video) return null;
     return video.thumbnail_url || overlayFrameCacheRef.current.get(video.id) || null;
+  }, []);
+
+  const resetOverlaySwipeState = useCallback(() => {
+    setForceOverlayMode(null);
+    setOverlayThumbReady({ current: false, next: false });
   }, []);
 
   const captureActiveFrame = useCallback(() => {
@@ -534,7 +548,8 @@ export default function Home({ onNav }: Props) {
     setStripDir(null);
     setStripNext(null);
     setStripSnap(false);
-  }, []);
+    resetOverlaySwipeState();
+  }, [resetOverlaySwipeState]);
 
   // ── Next-playable index ──────────────────────────────────────────────────
   const getNextPlayableIndex = useCallback((): number | null => {
@@ -903,6 +918,18 @@ export default function Home({ onNav }: Props) {
     setStripSnap(false);
     setStripOffset(clamped);
 
+    if (forceOverlayMode === null && clamped !== 0) {
+      const currentOverlayImage = getOverlayImageForVideo(currentVideo);
+      const nextOverlayImage = getOverlayImageForVideo(nextVideo);
+      const canUseOverlay = IOS_SAFE_SWIPE
+        && isIOSDevice
+        && !!currentOverlayImage
+        && !!nextOverlayImage
+        && isOverlayImageReady(currentOverlayImage)
+        && isOverlayImageReady(nextOverlayImage);
+      setForceOverlayMode(canUseOverlay);
+    }
+
     const now = Date.now();
     if (Math.abs(clamped) >= DRAG_FRAME_CAPTURE_MIN_PX
       && now - lastCaptureTimeRef.current >= DRAG_FRAME_CAPTURE_THROTTLE_MS) {
@@ -920,7 +947,10 @@ export default function Home({ onNav }: Props) {
       setStripDir(null);
       setStripNext(null);
     }
-  }, [captureActiveFrame, currentVideo, isAnimating, getNextPlayableIndex, feedIndex, feedVideos, containerH]);
+  }, [
+    captureActiveFrame, containerH, currentVideo, feedIndex, feedVideos, forceOverlayMode,
+    getNextPlayableIndex, getOverlayImageForVideo, isAnimating, isIOSDevice, isOverlayImageReady,
+  ]);
 
   // ── Snap back when gesture didn't cross threshold ────────────────────────
   const onGestureEnd = useCallback((didSwipe: boolean) => {
@@ -928,7 +958,10 @@ export default function Home({ onNav }: Props) {
       setStripSnap(false); // goNext will drive the rest
       return;
     }
-    if (!stripNext && stripOffset === 0) return;
+    if (!stripNext && stripOffset === 0) {
+      resetOverlaySwipeState();
+      return;
+    }
     // Animate strip back to resting position
     setStripSnap(true);
     setStripOffset(0);
@@ -937,8 +970,9 @@ export default function Home({ onNav }: Props) {
       setStripDir(null);
       setStripNext(null);
       setStripSnap(false);
+      resetOverlaySwipeState();
     }, 220);
-  }, [stripNext, stripOffset]);
+  }, [resetOverlaySwipeState, stripNext, stripOffset]);
 
   const primeInactive = useCallback((video: Video) => {
     const el = getInactiveRef().current;
@@ -999,6 +1033,7 @@ export default function Home({ onNav }: Props) {
       setStripDir(null);
       setStripNext(null);
       setStripSnap(false);
+      resetOverlaySwipeState();
       setIsAnimating(false);
       setNextVideoReady(false);
     };
@@ -1023,13 +1058,14 @@ export default function Home({ onNav }: Props) {
       setStripDir(null);
       setStripNext(null);
       setStripSnap(false);
+      resetOverlaySwipeState();
       setIsAnimating(false);
       failedVideos.current.add(nextVideo.id);
       skipToNextPlayable();
     };
     inactive.addEventListener('canplay', onReady, { once: true });
     inactive.addEventListener('error', onError, { once: true });
-  }, [feedMuted, getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo, settlePreloadedVideo, skipToNextPlayable]);
+  }, [feedMuted, getActiveRef, getInactiveRef, resetOverlaySwipeState, safePlay, setFeedIndex, setCurrentVideo, settlePreloadedVideo, skipToNextPlayable]);
 
   // ── Commit swipe ─────────────────────────────────────────────────────────
   const goNext = useCallback((type: 'like' | 'dislike') => {
@@ -1080,6 +1116,18 @@ export default function Home({ onNav }: Props) {
       animationStarted: false,
     };
 
+    if (forceOverlayMode === null) {
+      const currentOverlayImage = getOverlayImageForVideo(currentVideo);
+      const nextOverlayImage = getOverlayImageForVideo(nextVideo);
+      const canUseOverlay = IOS_SAFE_SWIPE
+        && isIOSDevice
+        && !!currentOverlayImage
+        && !!nextOverlayImage
+        && isOverlayImageReady(currentOverlayImage)
+        && isOverlayImageReady(nextOverlayImage);
+      setForceOverlayMode(canUseOverlay);
+    }
+
     // Pause outgoing video immediately so decode/render budget shifts to incoming.
     // Keep pause overlay hidden during swipe transition.
     captureActiveFrame();
@@ -1104,12 +1152,13 @@ export default function Home({ onNav }: Props) {
 
       const currentOverlayImage = getOverlayImageForVideo(currentVideo);
       const nextOverlayImage = getOverlayImageForVideo(pendingVideo);
-      const useOverlayDelay = IOS_SAFE_SWIPE
+      const overlayDelayEligible = IOS_SAFE_SWIPE
         && isIOSDevice
         && !!currentOverlayImage
         && !!nextOverlayImage
         && isOverlayImageReady(currentOverlayImage)
         && isOverlayImageReady(nextOverlayImage);
+      const useOverlayDelay = forceOverlayMode ?? overlayDelayEligible;
 
       const kick = () => {
         const activePending = pendingSwipeRef.current;
@@ -1166,6 +1215,7 @@ export default function Home({ onNav }: Props) {
     if (!waitEl) {
       pendingSwipeRef.current = null;
       setIsAnimating(false);
+      resetOverlaySwipeState();
       return;
     }
 
@@ -1212,9 +1262,9 @@ export default function Home({ onNav }: Props) {
     }, 3000);
   }, [
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
-    getNextPlayableIndex, getPlaybackMetrics, isAnimating, loggedIn,
-    primeInactive, setFeedVideos, skipToNextPlayable, trackVideoSignal,
-    captureActiveFrame, getActiveRef, getOverlayImageForVideo, isIOSDevice, isOverlayImageReady, settlePreloadedVideo,
+    getNextPlayableIndex, getPlaybackMetrics, isAnimating, isIOSDevice, loggedIn,
+    primeInactive, resetOverlaySwipeState, setFeedVideos, skipToNextPlayable, trackVideoSignal,
+    captureActiveFrame, forceOverlayMode, getActiveRef, getOverlayImageForVideo, isOverlayImageReady, settlePreloadedVideo,
   ]);
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
@@ -1422,13 +1472,14 @@ export default function Home({ onNav }: Props) {
   }, [mainCommentText, loggedIn, currentVideo, onNav, setCmtsOpen]);
 
   // ── Strip styles ─────────────────────────────────────────────────────────
-  const usePosterOverlaySwipe = IOS_SAFE_SWIPE
+  const overlayEligible = IOS_SAFE_SWIPE
     && isIOSDevice
     && !!stripNext
     && !!overlayCurrentImage
     && !!overlayNextImage
     && overlayThumbReady.current
     && overlayThumbReady.next;
+  const usePosterOverlaySwipe = forceOverlayMode ?? overlayEligible;
 
   const stripStyle: React.CSSProperties = {
     position: 'absolute',
