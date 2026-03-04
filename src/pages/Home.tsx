@@ -1069,9 +1069,33 @@ export default function Home({ onNav }: Props) {
 
   // ── Commit swipe ─────────────────────────────────────────────────────────
   const goNext = useCallback((type: 'like' | 'dislike') => {
-    if (!currentVideo || isAnimating) return;
+    // Interrupt and clean any previous swipe transaction/timers.
+    pendingSwipeRef.current = null;
+    if (slideTimer.current) {
+      clearTimeout(slideTimer.current);
+      slideTimer.current = null;
+    }
+    if (preloadWaitTimer.current) {
+      clearTimeout(preloadWaitTimer.current);
+      preloadWaitTimer.current = null;
+    }
+    if (transitionKickTimer.current) {
+      clearTimeout(transitionKickTimer.current);
+      transitionKickTimer.current = null;
+    }
+    if (snapBackTimer.current) {
+      clearTimeout(snapBackTimer.current);
+      snapBackTimer.current = null;
+    }
+    setIsAnimating(false);
+    resetOverlaySwipeState();
+
+    if (!currentVideo) return;
     const nextIdx = getNextPlayableIndex();
-    if (nextIdx === null || nextIdx === feedIndex) return;
+    if (nextIdx === null || nextIdx === feedIndex) {
+      setIsAnimating(false);
+      return;
+    }
     const nextVideo = feedVideos[nextIdx];
 
     const { watchPct, watchSeconds } = getPlaybackMetrics();
@@ -1262,7 +1286,7 @@ export default function Home({ onNav }: Props) {
     }, 3000);
   }, [
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
-    getNextPlayableIndex, getPlaybackMetrics, isAnimating, isIOSDevice, loggedIn,
+    getNextPlayableIndex, getPlaybackMetrics, isIOSDevice, loggedIn,
     primeInactive, resetOverlaySwipeState, setFeedVideos, skipToNextPlayable, trackVideoSignal,
     captureActiveFrame, forceOverlayMode, getActiveRef, getOverlayImageForVideo, isOverlayImageReady, settlePreloadedVideo,
   ]);
