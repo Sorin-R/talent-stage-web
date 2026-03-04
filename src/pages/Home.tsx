@@ -967,6 +967,7 @@ export default function Home({ onNav }: Props) {
       const active = getActiveRef().current;
       if (active && !active.paused) {
         active.pause();
+        hidePlaybackIndicator();
         setIsPaused(true);
         pausedByScrollRef.current = true;
       }
@@ -1007,6 +1008,7 @@ export default function Home({ onNav }: Props) {
   }, [
     captureActiveFrame, containerH, currentVideo, feedIndex, feedVideos, forceOverlayMode,
     getActiveRef, getNextPlayableIndex, getOverlayImageForVideo, isAnimating, isIOSDevice, isOverlayImageReady,
+    hidePlaybackIndicator,
   ]);
 
   // ── Snap back when gesture didn't cross threshold ────────────────────────
@@ -1592,6 +1594,10 @@ export default function Home({ onNav }: Props) {
     && overlayThumbReady.current
     && overlayThumbReady.next;
   const usePosterOverlaySwipe = forceOverlayMode ?? overlayEligible;
+  const hidePlaybackDuringSwipe = isAnimating
+    || pausedByScrollRef.current
+    || stripDir !== null
+    || Math.abs(stripOffset) > 2;
 
   const stripStyle: React.CSSProperties = {
     position: 'absolute',
@@ -1981,7 +1987,7 @@ export default function Home({ onNav }: Props) {
                 <span>{swipeCountdown}</span>
               </div>
             )}
-            <div className={`playback-indicator ${(isPaused || playbackIndicator) ? 'show' : ''}`} aria-hidden>
+            <div className={`playback-indicator ${(!hidePlaybackDuringSwipe && (isPaused || playbackIndicator)) ? 'show' : ''}`} aria-hidden>
               {(() => {
                 const isPauseState = !isPaused && playbackIndicator === 'pause';
                 const iconSrc = isPauseState ? PAUSE_OVERLAY_ICON : PLAY_OVERLAY_ICON;
