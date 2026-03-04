@@ -23,6 +23,8 @@ interface AppState {
   cmtsOpen: boolean;
   drawerOpen: boolean;
   shareOpen: boolean;
+  uploadInProgress: boolean;
+  uploadProgress: number;
 
   // Actions
   setUser: (u: User) => void;
@@ -37,6 +39,7 @@ interface AppState {
   setCmtsOpen: (open: boolean) => void;
   setDrawerOpen: (open: boolean) => void;
   setShareOpen: (open: boolean) => void;
+  setUploadStatus: (active: boolean, progress: number) => void;
   restoreSession: () => Promise<void>;
 }
 
@@ -54,6 +57,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   cmtsOpen: false,
   drawerOpen: false,
   shareOpen: false,
+  uploadInProgress: false,
+  uploadProgress: 0,
 
   setUser: (u: User) => {
     // Keep legacy avatar values compatible across localhost/LAN setups
@@ -78,6 +83,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setCmtsOpen: (open) => set({ cmtsOpen: open }),
   setDrawerOpen: (open) => set({ drawerOpen: open }),
   setShareOpen: (open) => set({ shareOpen: open }),
+  setUploadStatus: (active, progress) => set({
+    uploadInProgress: active,
+    uploadProgress: Math.max(0, Math.min(100, Math.floor(progress))),
+  }),
 
   restoreSession: async () => {
     const token = localStorage.getItem('ts_token');

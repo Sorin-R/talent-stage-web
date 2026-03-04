@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import type { CSSProperties } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { apiFetch } from '../services/api';
 import { toast } from '../components/Toast';
@@ -19,7 +18,10 @@ interface Props {
 }
 
 export default function Upload({ onNav, openToken }: Props) {
-  const { user, loggedIn, setFeedVideos, setFeedIndex, setCurrentVideo } = useAppStore();
+  const {
+    user, loggedIn, setFeedVideos, setFeedIndex, setCurrentVideo,
+    uploadInProgress, uploadProgress, setUploadStatus,
+  } = useAppStore();
   const [myVideos, setMyVideos] = useState<Video[]>([]);
   const [showPostForm, setShowPostForm] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -27,8 +29,6 @@ export default function Upload({ onNav, openToken }: Props) {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [isPosting, setIsPosting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -92,7 +92,7 @@ export default function Upload({ onNav, openToken }: Props) {
     if (!category) { toast('Select a category first'); return; }
     if (!selectedFile) { toast('Pick a video first'); return; }
     if (!loggedIn) { toast('Sign in first'); onNav('login'); return; }
-    if (isPosting) return;
+    if (uploadInProgress) return;
 
     toast('Uploading...');
     const form = new FormData();
@@ -101,17 +101,15 @@ export default function Upload({ onNav, openToken }: Props) {
     form.append('description', cleanDescription);
     form.append('talent_type', category);
 
-    setIsPosting(true);
-    setUploadProgress(0);
-    const data = await uploadVideoWithProgress(form, setUploadProgress);
+    setUploadStatus(true, 0);
+    const data = await uploadVideoWithProgress(form, (value) => setUploadStatus(true, value));
     if (!data.success) {
-      setIsPosting(false);
-      setUploadProgress(0);
+      setUploadStatus(false, 0);
       toast('Error: ' + data.error);
       return;
     }
 
-    setUploadProgress(100);
+    setUploadStatus(true, 100);
     await new Promise((resolve) => setTimeout(resolve, 180));
 
     resetPostDraft();
@@ -119,8 +117,7 @@ export default function Upload({ onNav, openToken }: Props) {
     onNav('upload');
     toast('Video posted!');
     loadMyVideos();
-    setIsPosting(false);
-    setUploadProgress(0);
+    setUploadStatus(false, 0);
   };
 
   const uploadVideoWithProgress = (
@@ -241,14 +238,9 @@ export default function Upload({ onNav, openToken }: Props) {
           <div className="pfr">
             <div className="fn">{selectedFile?.name || 'No file selected'}</div>
           </div>
-          <div
-            className={`bpost-wrap ${isPosting ? 'active' : 'idle'}`}
-            style={{ ['--up-progress' as string]: `${uploadProgress}%` } as CSSProperties}
-          >
-            <button className={`bpost ${isPosting ? 'is-uploading' : ''}`} onClick={doPost} disabled={isPosting}>
-              {isPosting ? `Uploading ${uploadProgress}%` : 'Post Video'}
-            </button>
-          </div>
+          <button className={`bpost ${uploadInProgress ? 'is-uploading' : ''}`} onClick={doPost} disabled={uploadInProgress}>
+            {uploadInProgress ? `Uploading ${uploadProgress}%` : 'Post Video'}
+          </button>
         </div>
       </div>
     );

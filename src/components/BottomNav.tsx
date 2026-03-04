@@ -1,4 +1,5 @@
 import { useAppStore } from '../store/useAppStore';
+import type { CSSProperties } from 'react';
 
 type Page = 'home' | 'following' | 'upload' | 'saved' | 'account' | 'login';
 
@@ -9,6 +10,8 @@ interface Props {
 
 export default function BottomNav({ active, onNav }: Props) {
   const loggedIn = useAppStore((s) => s.loggedIn);
+  const uploadInProgress = useAppStore((s) => s.uploadInProgress);
+  const uploadProgress = useAppStore((s) => s.uploadProgress);
 
   const profNav = () => onNav(loggedIn ? 'account' : 'login');
 
@@ -25,8 +28,13 @@ export default function BottomNav({ active, onNav }: Props) {
         </div>
       </div>
       <div className={`bi ${active === 'upload' ? 'active' : ''}`} onClick={() => onNav('upload')}>
-        <div className="bc">
-          <img src="/icons/upload.png" style={{ width: 43, height: 43, objectFit: 'contain', filter: 'invert(1)' }} alt="Upload" />
+        <div
+          className={`bc ${uploadInProgress ? 'upload-nav-loading' : ''}`}
+          style={{ ['--upload-progress' as string]: `${uploadProgress}%` } as CSSProperties}
+        >
+          <span className="upload-nav-inner">
+            <img src="/icons/upload.png" style={{ width: 43, height: 43, objectFit: 'contain', filter: 'invert(1)' }} alt="Upload" />
+          </span>
         </div>
       </div>
       <div className={`bi ${active === 'saved' ? 'active' : ''}`} onClick={() => onNav('saved')}>

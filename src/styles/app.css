@@ -1114,6 +1114,24 @@ button {
     background: #fff;
     border: none !important;
 }
+.bnav .bi:nth-child(3) .bc.upload-nav-loading {
+    --upload-progress: 0%;
+    padding: 3px;
+    border-radius: 50%;
+    background: conic-gradient(
+        #62f0b2 var(--upload-progress),
+        rgba(255, 255, 255, 0.25) 0
+    ) !important;
+}
+.bnav .bi:nth-child(3) .bc .upload-nav-inner {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+}
 .bnav .bi:nth-child(3).active .bc {
     border: 3px solid var(--acc) !important;
 }
@@ -2078,19 +2096,6 @@ button {
     font-weight: 700;
     font-size: 14px;
     cursor: pointer;
-}
-.bpost-wrap {
-    --up-progress: 0%;
-    display: inline-flex;
-    border-radius: 12px;
-    padding: 0;
-}
-.bpost-wrap.active {
-    padding: 3px;
-    background: conic-gradient(
-        #62f0b2 var(--up-progress),
-        rgba(255, 255, 255, 0.2) 0
-    );
 }
 .bpost.is-uploading {
     cursor: default;
