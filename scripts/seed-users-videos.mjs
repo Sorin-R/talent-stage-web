@@ -100,12 +100,21 @@ async function collectVideoFiles(videoDir) {
   return files;
 }
 
+function getMimeTypeForVideo(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.mp4' || ext === '.m4v') return 'video/mp4';
+  if (ext === '.mov') return 'video/quicktime';
+  if (ext === '.webm') return 'video/webm';
+  return 'application/octet-stream';
+}
+
 async function fileToBlob(filePath) {
+  const mime = getMimeTypeForVideo(filePath);
   if (typeof fs.openAsBlob === 'function') {
-    return fs.openAsBlob(filePath);
+    return fs.openAsBlob(filePath, { type: mime });
   }
   const buf = await fs.readFile(filePath);
-  return new Blob([buf]);
+  return new Blob([buf], { type: mime });
 }
 
 async function fetchJson(url, options = {}) {
@@ -275,4 +284,3 @@ main().catch((err) => {
   console.error('Seed script failed:', err?.message || err);
   process.exit(1);
 });
-
