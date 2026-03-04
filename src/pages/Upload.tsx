@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { apiFetch } from '../services/api';
 import { toast } from '../components/Toast';
@@ -10,6 +11,7 @@ const GALLERY_UPLOAD_ICON = '/icons/upload-gallery.png';
 const CAMERA_UPLOAD_ICON = '/icons/upload-camera.png';
 const TITLE_MAX_LENGTH = 200;
 const DESCRIPTION_MAX_LENGTH = 1000;
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 interface Props {
   onNav: (page: string) => void;
@@ -25,6 +27,8 @@ export default function Upload({ onNav, openToken }: Props) {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isPosting, setIsPosting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,6 +92,7 @@ export default function Upload({ onNav, openToken }: Props) {
     if (!category) { toast('Select a category first'); return; }
     if (!selectedFile) { toast('Pick a video first'); return; }
     if (!loggedIn) { toast('Sign in first'); onNav('login'); return; }
+    if (isPosting) return;
 
     toast('Uploading...');
     const form = new FormData();
@@ -96,14 +101,66 @@ export default function Upload({ onNav, openToken }: Props) {
     form.append('description', cleanDescription);
     form.append('talent_type', category);
 
-    const data = await apiFetch('/videos', { method: 'POST', body: form });
-    if (!data.success) { toast('Error: ' + data.error); return; }
+    setIsPosting(true);
+    setUploadProgress(0);
+    const data = await uploadVideoWithProgress(form, setUploadProgress);
+    if (!data.success) {
+      setIsPosting(false);
+      setUploadProgress(0);
+      toast('Error: ' + data.error);
+      return;
+    }
+
+    setUploadProgress(100);
+    await new Promise((resolve) => setTimeout(resolve, 180));
 
     resetPostDraft();
     setShowPostForm(false);
     onNav('upload');
     toast('Video posted!');
     loadMyVideos();
+    setIsPosting(false);
+    setUploadProgress(0);
+  };
+
+  const uploadVideoWithProgress = (
+    form: FormData,
+    onProgress: (value: number) => void
+  ): Promise<{ success: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', API_BASE + '/videos');
+      const token = localStorage.getItem('ts_token');
+      if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+        onProgress(pct);
+      };
+
+      xhr.onerror = () => resolve({ success: false, error: 'Cannot reach server' });
+      xhr.onabort = () => resolve({ success: false, error: 'Upload cancelled' });
+      xhr.onload = () => {
+        const text = xhr.responseText || '';
+        if (!text.trim()) {
+          resolve({ success: false, error: 'Empty response' });
+          return;
+        }
+        try {
+          const parsed = JSON.parse(text) as { success?: boolean; error?: string };
+          if (xhr.status >= 200 && xhr.status < 300 && parsed?.success) {
+            resolve({ success: true });
+            return;
+          }
+          resolve({ success: false, error: parsed?.error || 'Upload failed' });
+        } catch {
+          resolve({ success: false, error: 'Server error: ' + xhr.status });
+        }
+      };
+
+      xhr.send(form);
+    });
   };
 
   const deleteVideo = async (id: string) => {
@@ -184,7 +241,14 @@ export default function Upload({ onNav, openToken }: Props) {
           <div className="pfr">
             <div className="fn">{selectedFile?.name || 'No file selected'}</div>
           </div>
-          <button className="bpost" onClick={doPost}>Post Video</button>
+          <div
+            className={`bpost-wrap ${isPosting ? 'active' : 'idle'}`}
+            style={{ ['--up-progress' as string]: `${uploadProgress}%` } as CSSProperties}
+          >
+            <button className={`bpost ${isPosting ? 'is-uploading' : ''}`} onClick={doPost} disabled={isPosting}>
+              {isPosting ? `Uploading ${uploadProgress}%` : 'Post Video'}
+            </button>
+          </div>
         </div>
       </div>
     );

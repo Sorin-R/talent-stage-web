@@ -2079,6 +2079,27 @@ button {
     font-size: 14px;
     cursor: pointer;
 }
+.bpost-wrap {
+    --up-progress: 0%;
+    display: inline-flex;
+    border-radius: 12px;
+    padding: 0;
+}
+.bpost-wrap.active {
+    padding: 3px;
+    background: conic-gradient(
+        #62f0b2 var(--up-progress),
+        rgba(255, 255, 255, 0.2) 0
+    );
+}
+.bpost.is-uploading {
+    cursor: default;
+    opacity: 0.96;
+    min-width: 170px;
+}
+.bpost:disabled {
+    pointer-events: none;
+}
 
 /* ── TALENT PAGE ─────────────────────────────── */
 .tsc {
