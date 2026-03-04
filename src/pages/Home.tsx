@@ -1950,8 +1950,12 @@ export default function Home({ onNav }: Props) {
                   hidePlaybackIndicator();
                   setIsPaused(false);
                   setAutoplayBlocked(false);
+                  void requestWakeLock();
                 }}
-                onPause={(e) => { if (isActiveEl(e) && !isAnimating) setIsPaused(true); }}
+                onPause={(e) => {
+                  if (isActiveEl(e) && !isAnimating) setIsPaused(true);
+                  if (isActiveEl(e)) void releaseWakeLock();
+                }}
                 onTimeUpdate={(e) => { if (isActiveEl(e)) onVideoTimeUpdate(); }}
                 onEnded={(e) => { if (isActiveEl(e)) onVideoEnded(); }}
                 onError={(e) => { if (isActiveEl(e)) onVideoError(); }}
@@ -1990,8 +1994,12 @@ export default function Home({ onNav }: Props) {
                   hidePlaybackIndicator();
                   setIsPaused(false);
                   setAutoplayBlocked(false);
+                  void requestWakeLock();
                 }}
-                onPause={(e) => { if (isActiveEl(e) && !isAnimating) setIsPaused(true); }}
+                onPause={(e) => {
+                  if (isActiveEl(e) && !isAnimating) setIsPaused(true);
+                  if (isActiveEl(e)) void releaseWakeLock();
+                }}
                 onTimeUpdate={(e) => { if (isActiveEl(e)) onVideoTimeUpdate(); }}
                 onEnded={(e) => { if (isActiveEl(e)) onVideoEnded(); }}
                 onError={(e) => { if (isActiveEl(e)) onVideoError(); }}
