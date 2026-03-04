@@ -23,6 +23,10 @@ const WHEEL_THRESHOLD = 30;
 const WHEEL_DEBOUNCE_MS = 400;
 const PRELOAD_WINDOW_RADIUS = 3; // 3 above + current + 3 below = 7 videos warmed
 const IOS_SAFE_SWIPE = true;
+const DRAG_FRAME_CAPTURE_MIN_PX = 40;
+const DRAG_FRAME_CAPTURE_THROTTLE_MS = 80;
+const OVERLAY_FRAME_CACHE_LIMIT = 20;
+const IOS_OVERLAY_MIN_REVEAL_DELAY_MS = 60;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -92,6 +96,7 @@ export default function Home({ onNav }: Props) {
   const creatorSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const slideTimer        = useRef<ReturnType<typeof setTimeout> | null>(null);
   const preloadWaitTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transitionKickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const snapBackTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wheelTimer        = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -104,6 +109,7 @@ export default function Home({ onNav }: Props) {
   const overlayThumbLoadRef = useRef<Map<string, Promise<boolean>>>(new Map());
   const overlayFrameCacheRef = useRef<Map<string, string>>(new Map());
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastCaptureTimeRef = useRef(0);
   const watchMilestonesRef = useRef<Set<number>>(new Set());
   const lastWatchPctRef = useRef<number>(0);
   const watchStartedAtRef = useRef<number>(Date.now());
@@ -137,6 +143,7 @@ export default function Home({ onNav }: Props) {
 
   const preloadOverlayThumb = useCallback((url: string | null | undefined): Promise<boolean> => {
     if (!url) return Promise.resolve(false);
+    if (url.startsWith('data:')) return Promise.resolve(true);
     if (overlayThumbCacheRef.current.has(url)) return Promise.resolve(true);
     const inFlight = overlayThumbLoadRef.current.get(url);
     if (inFlight) return inFlight;
@@ -160,6 +167,17 @@ export default function Home({ onNav }: Props) {
     return loader;
   }, []);
 
+  const isOverlayImageReady = useCallback((url: string | null | undefined) => {
+    if (!url) return false;
+    if (url.startsWith('data:')) return true;
+    return overlayThumbCacheRef.current.has(url);
+  }, []);
+
+  const getOverlayImageForVideo = useCallback((video?: Video | null) => {
+    if (!video) return null;
+    return video.thumbnail_url || overlayFrameCacheRef.current.get(video.id) || null;
+  }, []);
+
   const captureActiveFrame = useCallback(() => {
     if (!currentVideo) return;
     const active = getActiveRef().current;
@@ -179,9 +197,16 @@ export default function Home({ onNav }: Props) {
       if (!ctx) return;
       ctx.drawImage(active, 0, 0, canvas.width, canvas.height);
       const frameData = canvas.toDataURL('image/jpeg', 0.72);
-      if (!frameData) return;
-      if (overlayFrameCacheRef.current.get(currentVideo.id) === frameData) return;
-      overlayFrameCacheRef.current.set(currentVideo.id, frameData);
+      if (!frameData || frameData.length < 1000) return;
+      const cache = overlayFrameCacheRef.current;
+      if (cache.get(currentVideo.id) === frameData) return;
+      if (cache.has(currentVideo.id)) cache.delete(currentVideo.id);
+      cache.set(currentVideo.id, frameData);
+      while (cache.size > OVERLAY_FRAME_CACHE_LIMIT) {
+        const oldestKey = cache.keys().next().value as string | undefined;
+        if (!oldestKey) break;
+        cache.delete(oldestKey);
+      }
       setOverlayFrameVersion((v) => v + 1);
     } catch {
       // Ignore tainted canvas / decode errors and fall back to thumbnails.
@@ -422,6 +447,7 @@ export default function Home({ onNav }: Props) {
     return () => {
       if (slideTimer.current)    clearTimeout(slideTimer.current);
       if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
+      if (transitionKickTimer.current) clearTimeout(transitionKickTimer.current);
       if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
       if (wheelTimer.current) clearTimeout(wheelTimer.current);
       if (playbackIndicatorTimer.current) clearTimeout(playbackIndicatorTimer.current);
@@ -440,12 +466,8 @@ export default function Home({ onNav }: Props) {
     };
   }, [releaseWakeLock]);
 
-  const overlayCurrentImage = currentVideo?.thumbnail_url
-    || (currentVideo ? overlayFrameCacheRef.current.get(currentVideo.id) : null)
-    || null;
-  const overlayNextImage = stripNext?.thumbnail_url
-    || (stripNext ? overlayFrameCacheRef.current.get(stripNext.id) : null)
-    || null;
+  const overlayCurrentImage = getOverlayImageForVideo(currentVideo);
+  const overlayNextImage = getOverlayImageForVideo(stripNext);
 
   useEffect(() => {
     let cancelled = false;
@@ -454,8 +476,8 @@ export default function Home({ onNav }: Props) {
       return;
     }
 
-    const currentCached = overlayThumbCacheRef.current.has(overlayCurrentImage);
-    const nextCached = overlayThumbCacheRef.current.has(overlayNextImage);
+    const currentCached = isOverlayImageReady(overlayCurrentImage);
+    const nextCached = isOverlayImageReady(overlayNextImage);
     setOverlayThumbReady({ current: currentCached, next: nextCached });
     if (currentCached && nextCached) return;
 
@@ -471,7 +493,7 @@ export default function Home({ onNav }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [overlayCurrentImage, overlayNextImage, preloadOverlayThumb, stripNext]);
+  }, [isOverlayImageReady, overlayCurrentImage, overlayNextImage, preloadOverlayThumb, stripNext]);
 
   useEffect(() => {
     const active = getActiveRef().current;
@@ -506,6 +528,7 @@ export default function Home({ onNav }: Props) {
   const clearStrip = useCallback(() => {
     if (slideTimer.current) clearTimeout(slideTimer.current);
     if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
+    if (transitionKickTimer.current) clearTimeout(transitionKickTimer.current);
     if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
     setStripOffset(0);
     setStripDir(null);
@@ -880,6 +903,13 @@ export default function Home({ onNav }: Props) {
     setStripSnap(false);
     setStripOffset(clamped);
 
+    const now = Date.now();
+    if (Math.abs(clamped) >= DRAG_FRAME_CAPTURE_MIN_PX
+      && now - lastCaptureTimeRef.current >= DRAG_FRAME_CAPTURE_THROTTLE_MS) {
+      lastCaptureTimeRef.current = now;
+      captureActiveFrame();
+    }
+
     if (clamped < 0) {
       setStripDir('up');
       setStripNext(nextVideo);
@@ -890,7 +920,7 @@ export default function Home({ onNav }: Props) {
       setStripDir(null);
       setStripNext(null);
     }
-  }, [currentVideo, isAnimating, getNextPlayableIndex, feedIndex, feedVideos, containerH]);
+  }, [captureActiveFrame, currentVideo, isAnimating, getNextPlayableIndex, feedIndex, feedVideos, containerH]);
 
   // ── Snap back when gesture didn't cross threshold ────────────────────────
   const onGestureEnd = useCallback((didSwipe: boolean) => {
@@ -943,6 +973,7 @@ export default function Home({ onNav }: Props) {
       pendingSwipeRef.current = null;
       if (slideTimer.current) clearTimeout(slideTimer.current);
       if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
+      if (transitionKickTimer.current) clearTimeout(transitionKickTimer.current);
       getActiveRef().current?.pause();
       activeSlot.current = activeSlot.current === 'A' ? 'B' : 'A';
       slotJustSwapped.current = true;
@@ -987,6 +1018,7 @@ export default function Home({ onNav }: Props) {
       const activePending = pendingSwipeRef.current;
       if (!activePending || activePending.txn !== pendingTxn) return;
       pendingSwipeRef.current = null;
+      if (transitionKickTimer.current) clearTimeout(transitionKickTimer.current);
       setStripOffset(0);
       setStripDir(null);
       setStripNext(null);
@@ -1065,12 +1097,38 @@ export default function Home({ onNav }: Props) {
         clearTimeout(preloadWaitTimer.current);
         preloadWaitTimer.current = null;
       }
+      if (transitionKickTimer.current) {
+        clearTimeout(transitionKickTimer.current);
+        transitionKickTimer.current = null;
+      }
 
-      // Deterministic transition path (no reset->RAF jump).
-      setStripDir(pendingDirection);
-      setStripNext(pendingVideo);
-      setStripSnap(true);
-      setStripOffset(pendingTarget);
+      const currentOverlayImage = getOverlayImageForVideo(currentVideo);
+      const nextOverlayImage = getOverlayImageForVideo(pendingVideo);
+      const useOverlayDelay = IOS_SAFE_SWIPE
+        && isIOSDevice
+        && !!currentOverlayImage
+        && !!nextOverlayImage
+        && isOverlayImageReady(currentOverlayImage)
+        && isOverlayImageReady(nextOverlayImage);
+
+      const kick = () => {
+        const activePending = pendingSwipeRef.current;
+        if (!activePending || activePending.txn !== txn) return;
+        // Deterministic transition path (no reset->RAF jump).
+        setStripDir(pendingDirection);
+        setStripNext(pendingVideo);
+        setStripSnap(true);
+        setStripOffset(pendingTarget);
+      };
+
+      if (useOverlayDelay) {
+        transitionKickTimer.current = setTimeout(() => {
+          transitionKickTimer.current = null;
+          kick();
+        }, IOS_OVERLAY_MIN_REVEAL_DELAY_MS);
+      } else {
+        kick();
+      }
 
       if (slideTimer.current) clearTimeout(slideTimer.current);
       slideTimer.current = setTimeout(() => {
@@ -1127,6 +1185,10 @@ export default function Home({ onNav }: Props) {
         clearTimeout(preloadWaitTimer.current);
         preloadWaitTimer.current = null;
       }
+      if (transitionKickTimer.current) {
+        clearTimeout(transitionKickTimer.current);
+        transitionKickTimer.current = null;
+      }
       pendingSwipeRef.current = null;
       setIsAnimating(false);
       failedVideos.current.add(nextVideo.id);
@@ -1139,6 +1201,10 @@ export default function Home({ onNav }: Props) {
     preloadWaitTimer.current = setTimeout(() => {
       const pending = pendingSwipeRef.current;
       if (!pending || pending.txn !== txn) return;
+      if (transitionKickTimer.current) {
+        clearTimeout(transitionKickTimer.current);
+        transitionKickTimer.current = null;
+      }
       pendingSwipeRef.current = null;
       setIsAnimating(false);
       failedVideos.current.add(nextVideo.id);
@@ -1148,7 +1214,7 @@ export default function Home({ onNav }: Props) {
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
     getNextPlayableIndex, getPlaybackMetrics, isAnimating, loggedIn,
     primeInactive, setFeedVideos, skipToNextPlayable, trackVideoSignal,
-    captureActiveFrame, getActiveRef, settlePreloadedVideo,
+    captureActiveFrame, getActiveRef, getOverlayImageForVideo, isIOSDevice, isOverlayImageReady, settlePreloadedVideo,
   ]);
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
