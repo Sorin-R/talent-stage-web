@@ -128,7 +128,6 @@ export default function Home({ onNav }: Props) {
   const pausedByScrollRef = useRef(false);
   const swipeLockUntilRef = useRef(0);
   const swipeCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const initialTimerSkippedRef = useRef(false);
   const watchMilestonesRef = useRef<Set<number>>(new Set());
   const lastWatchPctRef = useRef<number>(0);
   const watchStartedAtRef = useRef<number>(Date.now());
@@ -538,14 +537,6 @@ export default function Home({ onNav }: Props) {
     }
 
     if (!swipeTimerEnabled || swipeTimerSeconds <= 0) {
-      swipeLockUntilRef.current = 0;
-      setSwipeCountdown(0);
-      return;
-    }
-
-    // Keep first loaded video free to swipe immediately (also after page refresh).
-    if (!initialTimerSkippedRef.current) {
-      initialTimerSkippedRef.current = true;
       swipeLockUntilRef.current = 0;
       setSwipeCountdown(0);
       return;
