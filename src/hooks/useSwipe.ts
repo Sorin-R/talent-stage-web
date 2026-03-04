@@ -67,8 +67,8 @@ export function useSwipe(
     ty0.current = e.touches[0].clientY;
     tx0.current = e.touches[0].clientX;
     const h = (e.currentTarget as HTMLElement | null)?.clientHeight || window.innerHeight || 0;
-    // Commit only after crossing feed center; otherwise snap back.
-    swipeThresholdRef.current = Math.max(35, Math.floor(h * 0.5));
+    // Commit only after crossing 2vh of the feed height; otherwise snap back.
+    swipeThresholdRef.current = Math.max(1, Math.floor(h * 0.02));
     dragActive.current = true;
     e.preventDefault();
   }, [isAnimating]);
