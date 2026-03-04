@@ -843,12 +843,14 @@ export default function Home({ onNav }: Props) {
       const nowActive = getActiveRef().current;
       if (nowActive) {
         nowActive.loop = true;
-        nowActive.currentTime = 0;
-        safePlay(nowActive);
+        nowActive.muted = feedMuted;
+        if (nowActive.paused) safePlay(nowActive);
       }
 
       setFeedIndex(nextIdx);
       setCurrentVideo(nextVideo);
+      setAutoplayBlocked(false);
+      setIsPaused(false);
       setStripOffset(0);
       setStripDir(null);
       setStripNext(null);
@@ -882,7 +884,7 @@ export default function Home({ onNav }: Props) {
     };
     inactive.addEventListener('canplay', onReady, { once: true });
     inactive.addEventListener('error', onError, { once: true });
-  }, [getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo, skipToNextPlayable, tryPlayMuted]);
+  }, [feedMuted, getActiveRef, getInactiveRef, safePlay, setFeedIndex, setCurrentVideo, skipToNextPlayable, tryPlayMuted]);
 
   // ── Commit swipe ─────────────────────────────────────────────────────────
   const goNext = useCallback((type: 'like' | 'dislike') => {
@@ -935,6 +937,11 @@ export default function Home({ onNav }: Props) {
       animationStarted: false,
     };
 
+    // Pause outgoing video immediately so decode/render budget shifts to incoming.
+    // Keep pause overlay hidden during swipe transition.
+    getActiveRef().current?.pause();
+    setIsPaused(false);
+
     const startTransition = () => {
       const pending = pendingSwipeRef.current;
       if (!pending || pending.txn !== txn || pending.animationStarted) return;
@@ -944,8 +951,7 @@ export default function Home({ onNav }: Props) {
         preloadWaitTimer.current = null;
       }
 
-      // Free decode/render capacity immediately for the incoming video.
-      getActiveRef().current?.pause();
+      // Keep incoming slot hot while strip is moving.
       tryPlayMuted(getInactiveRef().current);
 
       if (stripNext && stripDir === dir) {
@@ -1516,7 +1522,7 @@ export default function Home({ onNav }: Props) {
                   setIsPaused(false);
                   setAutoplayBlocked(false);
                 }}
-                onPause={(e) => { if (isActiveEl(e)) setIsPaused(true); }}
+                onPause={(e) => { if (isActiveEl(e) && !isAnimating) setIsPaused(true); }}
                 onTimeUpdate={(e) => { if (isActiveEl(e)) onVideoTimeUpdate(); }}
                 onEnded={(e) => { if (isActiveEl(e)) onVideoEnded(); }}
                 onError={(e) => { if (isActiveEl(e)) onVideoError(); }}
@@ -1553,7 +1559,7 @@ export default function Home({ onNav }: Props) {
                   setIsPaused(false);
                   setAutoplayBlocked(false);
                 }}
-                onPause={(e) => { if (isActiveEl(e)) setIsPaused(true); }}
+                onPause={(e) => { if (isActiveEl(e) && !isAnimating) setIsPaused(true); }}
                 onTimeUpdate={(e) => { if (isActiveEl(e)) onVideoTimeUpdate(); }}
                 onEnded={(e) => { if (isActiveEl(e)) onVideoEnded(); }}
                 onError={(e) => { if (isActiveEl(e)) onVideoError(); }}
