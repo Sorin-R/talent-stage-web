@@ -14,20 +14,20 @@ const SEARCH_ICON = '/icons/search.png';
 const MENU_ICON = '/icons/menu.png';
 const PLAY_OVERLAY_ICON = '/icons/play.png';
 const PAUSE_OVERLAY_ICON = '/icons/pause.png';
-const SLIDE_MS = 200;
+const SLIDE_MS = 340;
 const SLIDE_EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
 const TITLE_PREVIEW_CHARS = 35;
 const CREATOR_HANDLE_MAX = 20;
 const CREATOR_HANDLE_TRUNCATED = 17;
 const WHEEL_THRESHOLD = 30;
-const WHEEL_DEBOUNCE_MS = 400;
+const WHEEL_DEBOUNCE_MS = 550;
 const PRELOAD_WINDOW_RADIUS = 3; // 3 above + current + 3 below = 7 videos warmed
 const IOS_SAFE_SWIPE = true;
 const DRAG_FRAME_CAPTURE_MIN_PX = 40;
 const DRAG_FRAME_CAPTURE_THROTTLE_MS = 66;
 const OVERLAY_FRAME_CACHE_LIMIT = 20;
 const OVERLAY_THUMB_CACHE_LIMIT = 40;
-const IOS_OVERLAY_MIN_REVEAL_DELAY_MS = 60;
+const IOS_OVERLAY_MIN_REVEAL_DELAY_MS = 90;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
