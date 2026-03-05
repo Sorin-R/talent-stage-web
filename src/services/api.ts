@@ -4,6 +4,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api';
 export const MAINTENANCE_EVENT = 'ts:maintenance-mode';
 const LOCALHOST_URL_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?/i;
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
+const DATA_OR_BLOB_URL_RE = /^(?:data|blob):/i;
 const MEDIA_URL_KEYS = new Set(['file_url', 'thumbnail_url', 'avatar_url']);
 
 const getMediaBase = (): string => {
@@ -15,7 +16,14 @@ const getMediaBase = (): string => {
 };
 
 export const normalizeMediaUrl = (url: string | null | undefined): string | null | undefined => {
-  if (!url || !ABSOLUTE_HTTP_URL_RE.test(url)) return url;
+  if (!url) return url;
+  if (DATA_OR_BLOB_URL_RE.test(url)) return url;
+  if (!ABSOLUTE_HTTP_URL_RE.test(url)) {
+    const mediaBase = getMediaBase();
+    if (!mediaBase) return url;
+    const rel = url.startsWith('/') ? url : '/' + url;
+    return mediaBase + rel;
+  }
   if (!LOCALHOST_URL_RE.test(url)) return url;
   const mediaBase = getMediaBase();
   if (!mediaBase) return url;
@@ -29,7 +37,17 @@ const normalizeMediaUrlsInPayload = (value: unknown): unknown => {
   const record = value as Record<string, unknown>;
   for (const [key, fieldValue] of Object.entries(record)) {
     if (MEDIA_URL_KEYS.has(key) && typeof fieldValue === 'string') {
-      record[key] = normalizeMediaUrl(fieldValue);
+      let normalizedFieldValue = fieldValue.trim();
+      if (
+        key === 'avatar_url'
+        && normalizedFieldValue
+        && !ABSOLUTE_HTTP_URL_RE.test(normalizedFieldValue)
+        && !normalizedFieldValue.startsWith('/')
+        && !normalizedFieldValue.includes('/')
+      ) {
+        normalizedFieldValue = 'uploads/avatars/' + normalizedFieldValue;
+      }
+      record[key] = normalizeMediaUrl(normalizedFieldValue);
       continue;
     }
     if (fieldValue && typeof fieldValue === 'object') {
