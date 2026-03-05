@@ -30,6 +30,7 @@ const OVERLAY_THUMB_CACHE_LIMIT = 40;
 const IOS_OVERLAY_MIN_REVEAL_DELAY_MS = 90;
 const DEFAULT_SWIPE_LOCK_SECONDS = 5;
 const DEFAULT_SWIPE_LOCK_ENABLED = true;
+const DEFAULT_SWIPE_LOCK_VISIBLE = true;
 const DEFAULT_SWIPE_LOCK_OPACITY = 0.75;
 
 interface Props {
@@ -47,6 +48,7 @@ interface PendingSwipe {
 interface FeedRuntimeConfig {
   swipe_timer_enabled?: boolean;
   swipe_timer_seconds?: number;
+  swipe_timer_visible?: boolean;
   swipe_timer_opacity?: number;
 }
 
@@ -90,6 +92,7 @@ export default function Home({ onNav }: Props) {
   const [swipeCountdown, setSwipeCountdown] = useState(0);
   const [swipeTimerEnabled, setSwipeTimerEnabled] = useState(DEFAULT_SWIPE_LOCK_ENABLED);
   const [swipeTimerSeconds, setSwipeTimerSeconds] = useState(DEFAULT_SWIPE_LOCK_SECONDS);
+  const [swipeTimerVisible, setSwipeTimerVisible] = useState(DEFAULT_SWIPE_LOCK_VISIBLE);
   const [swipeTimerOpacity, setSwipeTimerOpacity] = useState(DEFAULT_SWIPE_LOCK_OPACITY);
   const [muteBtnTop, setMuteBtnTop] = useState<number | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
@@ -512,6 +515,9 @@ export default function Home({ onNav }: Props) {
         const seconds = Math.max(0, Math.min(60, Math.floor(rawSeconds)));
         setSwipeTimerSeconds(seconds);
       }
+
+      const visible = data.data.swipe_timer_visible;
+      if (typeof visible === 'boolean') setSwipeTimerVisible(visible);
 
       const rawOpacity = Number(data.data.swipe_timer_opacity);
       if (Number.isFinite(rawOpacity)) {
@@ -2034,7 +2040,7 @@ export default function Home({ onNav }: Props) {
                 </button>
               </div>
             )}
-            {swipeCountdown > 0 && (
+            {swipeTimerVisible && swipeCountdown > 0 && (
               <div className="swipe-lock-timer" aria-hidden>
                 <span style={{ color: `rgba(255, 255, 255, ${swipeTimerOpacity})` }}>{swipeCountdown}</span>
               </div>
