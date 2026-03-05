@@ -28,7 +28,7 @@ const DRAG_FRAME_CAPTURE_THROTTLE_MS = 66;
 const OVERLAY_FRAME_CACHE_LIMIT = 20;
 const OVERLAY_THUMB_CACHE_LIMIT = 40;
 const IOS_OVERLAY_MIN_REVEAL_DELAY_MS = 90;
-const DEFAULT_SWIPE_LOCK_SECONDS = 5;
+const DEFAULT_SWIPE_LOCK_MS = 5000;
 const DEFAULT_SWIPE_LOCK_ENABLED = true;
 const DEFAULT_SWIPE_LOCK_VISIBLE = true;
 const DEFAULT_SWIPE_LOCK_OPACITY = 0.75;
@@ -47,6 +47,7 @@ interface PendingSwipe {
 
 interface FeedRuntimeConfig {
   swipe_timer_enabled?: boolean;
+  swipe_timer_ms?: number;
   swipe_timer_seconds?: number;
   swipe_timer_visible?: boolean;
   swipe_timer_opacity?: number;
@@ -91,7 +92,7 @@ export default function Home({ onNav }: Props) {
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [swipeCountdown, setSwipeCountdown] = useState(0);
   const [swipeTimerEnabled, setSwipeTimerEnabled] = useState(DEFAULT_SWIPE_LOCK_ENABLED);
-  const [swipeTimerSeconds, setSwipeTimerSeconds] = useState(DEFAULT_SWIPE_LOCK_SECONDS);
+  const [swipeTimerMs, setSwipeTimerMs] = useState(DEFAULT_SWIPE_LOCK_MS);
   const [swipeTimerVisible, setSwipeTimerVisible] = useState(DEFAULT_SWIPE_LOCK_VISIBLE);
   const [swipeTimerOpacity, setSwipeTimerOpacity] = useState(DEFAULT_SWIPE_LOCK_OPACITY);
   const [muteBtnTop, setMuteBtnTop] = useState<number | null>(null);
@@ -510,10 +511,16 @@ export default function Home({ onNav }: Props) {
       const enabled = data.data.swipe_timer_enabled;
       if (typeof enabled === 'boolean') setSwipeTimerEnabled(enabled);
 
-      const rawSeconds = Number(data.data.swipe_timer_seconds);
-      if (Number.isFinite(rawSeconds)) {
-        const seconds = Math.max(0, Math.min(60, Math.floor(rawSeconds)));
-        setSwipeTimerSeconds(seconds);
+      const rawMs = Number(data.data.swipe_timer_ms);
+      if (Number.isFinite(rawMs)) {
+        const timerMs = Math.max(0, Math.min(60000, Math.floor(rawMs)));
+        setSwipeTimerMs(timerMs);
+      } else {
+        const rawSeconds = Number(data.data.swipe_timer_seconds);
+        if (Number.isFinite(rawSeconds)) {
+          const timerMs = Math.max(0, Math.min(60000, Math.floor(rawSeconds * 1000)));
+          setSwipeTimerMs(timerMs);
+        }
       }
 
       const visible = data.data.swipe_timer_visible;
@@ -542,14 +549,14 @@ export default function Home({ onNav }: Props) {
       return;
     }
 
-    if (!swipeTimerEnabled || swipeTimerSeconds <= 0) {
+    if (!swipeTimerEnabled || swipeTimerMs <= 0) {
       swipeLockUntilRef.current = 0;
       setSwipeCountdown(0);
       return;
     }
 
-    swipeLockUntilRef.current = Date.now() + swipeTimerSeconds * 1000;
-    setSwipeCountdown(swipeTimerSeconds);
+    swipeLockUntilRef.current = Date.now() + swipeTimerMs;
+    setSwipeCountdown(Math.ceil(swipeTimerMs / 1000));
 
     swipeCountdownTimerRef.current = setInterval(() => {
       const remainingMs = swipeLockUntilRef.current - Date.now();
@@ -570,7 +577,7 @@ export default function Home({ onNav }: Props) {
         swipeCountdownTimerRef.current = null;
       }
     };
-  }, [currentVideo?.id, currentVideo, swipeTimerEnabled, swipeTimerSeconds]);
+  }, [currentVideo?.id, currentVideo, swipeTimerEnabled, swipeTimerMs]);
 
   const overlayCurrentImage = getOverlayImageForVideo(currentVideo);
   const overlayNextImage = getOverlayImageForVideo(stripNext);
