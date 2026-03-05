@@ -365,15 +365,42 @@ async function registerOrLoginUser({
 
 async function uploadAvatarForUser({ apiBase, avatarEndpoint, token, avatarPath }) {
   if (!avatarPath || !token) return { ok: false, skipped: true };
-  const avatarUrl = `${apiBase}${normalizePathSuffix(avatarEndpoint)}`;
-  const form = new FormData();
-  const blob = await fileToBlob(avatarPath, getMimeTypeForImage(avatarPath));
-  form.append('avatar', blob, path.basename(avatarPath));
-  return fetchJson(avatarUrl, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
-  });
+
+  const normalized = normalizePathSuffix(avatarEndpoint || '/users/me/avatar') || '/users/me/avatar';
+  const endpointCandidates = normalized === '/users/me/avatar'
+    ? ['/users/me/avatar', '/auth/me/avatar']
+    : [normalized];
+  const methods = ['POST', 'PUT'];
+
+  let lastResponse = { ok: false, data: { error: 'Avatar upload failed' } };
+
+  for (const endpoint of endpointCandidates) {
+    for (const method of methods) {
+      const avatarUrl = `${apiBase}${endpoint}`;
+      const form = new FormData();
+      const blob = await fileToBlob(avatarPath, getMimeTypeForImage(avatarPath));
+      form.append('avatar', blob, path.basename(avatarPath));
+
+      // eslint-disable-next-line no-await-in-loop
+      const response = await fetchJson(avatarUrl, {
+        method,
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (response.ok) return response;
+
+      lastResponse = response;
+      const msg = String(response.data?.error || response.data?.message || '');
+      const isRouteOrMethodIssue =
+        response.status === 404
+        || response.status === 405
+        || /route not found/i.test(msg)
+        || /cannot .* (post|put)/i.test(msg);
+      if (!isRouteOrMethodIssue) return response;
+    }
+  }
+
+  return lastResponse;
 }
 
 async function uploadOneVideo({ apiBase, token, title, description, tags, talent_type, filePath, timeoutMs }) {
