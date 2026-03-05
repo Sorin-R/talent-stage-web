@@ -140,6 +140,61 @@ function limitText(input, maxChars) {
   return text.slice(0, maxChars).trim();
 }
 
+function extractWords(input) {
+  return String(input || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean)
+    .filter((word) => /[a-z]/i.test(word))
+    .filter((word) => word.length > 1)
+    .filter((word) => !/^[a-f0-9]{8,}$/i.test(word))
+    .filter((word) => !/^\d+$/.test(word));
+}
+
+function dedupeWords(words) {
+  const out = [];
+  const seen = new Set();
+  for (const word of words) {
+    const key = word.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(word);
+  }
+  return out;
+}
+
+function toTitleCase(phrase) {
+  return String(phrase || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1).toLowerCase()}`)
+    .join(' ')
+    .trim();
+}
+
+function buildPhraseTitle({ rawTitle, baseName, talentType }) {
+  const fallbackWords = ['creative', 'talent', 'showcase', 'performance', 'moment'];
+  const words = dedupeWords([
+    ...extractWords(rawTitle),
+    ...extractWords(baseName),
+    ...extractWords(talentType),
+    ...fallbackWords,
+  ]).slice(0, 14);
+
+  const minWords = 5;
+  while (words.length < minWords) {
+    words.push(fallbackWords[words.length % fallbackWords.length]);
+  }
+
+  const phrase = toTitleCase(words.join(' '));
+  const limited = limitText(phrase, TITLE_MAX_LEN);
+  if (limited.length >= 8) return limited;
+  return 'Creative Talent Showcase Performance Moment';
+}
+
 function sanitizeTags(inputTags, talentType) {
   const fallback = ['seed', 'talent', String(talentType || '').toLowerCase().replace(/\s+/g, '-')].filter(Boolean);
   const source = Array.isArray(inputTags) ? inputTags : String(inputTags || '').split(',');
@@ -267,7 +322,9 @@ async function generateMetadataWithDeepSeek({
             role: 'user',
             content: `Create metadata for a ${talentType} video named "${baseName}".
 Rules:
+- title must be a natural phrase made of words only (no IDs, no filenames, no hashtags, no emojis)
 - title max ${TITLE_MAX_LEN} chars
+- title should be 5-12 words
 - tags: 4-8 concise lowercase tags
 Return JSON: {"title":"...", "tags":["tag1","tag2"]}`,
           },
@@ -284,7 +341,11 @@ Return JSON: {"title":"...", "tags":["tag1","tag2"]}`,
     const content = parsed?.choices?.[0]?.message?.content;
     if (!content) return null;
     const payload = JSON.parse(content);
-    const title = limitText(payload?.title || '', TITLE_MAX_LEN);
+    const title = buildPhraseTitle({
+      rawTitle: payload?.title || '',
+      baseName,
+      talentType,
+    });
     const tags = sanitizeTags(payload?.tags || [], talentType);
     if (!title) return null;
     return { title, tags };
@@ -297,7 +358,12 @@ Return JSON: {"title":"...", "tags":["tag1","tag2"]}`,
 }
 
 function fallbackMetadata({ baseName, uploadIndex, talentType }) {
-  const title = limitText(`${baseName} #${String(uploadIndex + 1).padStart(3, '0')}`, TITLE_MAX_LEN);
+  void uploadIndex;
+  const title = buildPhraseTitle({
+    rawTitle: `${talentType} ${baseName}`,
+    baseName,
+    talentType,
+  });
   const tags = sanitizeTags(
     ['seed', 'test', String(talentType || '').toLowerCase().replace(/\s+/g, '-')],
     talentType
@@ -529,7 +595,11 @@ async function main() {
       uploadIndex: i,
       talentType: user.talent_type,
     });
-    const title = limitText(meta.title, TITLE_MAX_LEN);
+    const title = buildPhraseTitle({
+      rawTitle: meta.title,
+      baseName,
+      talentType: user.talent_type,
+    });
     const tags = sanitizeTags(meta.tags, user.talent_type).join(',');
     const description = `Auto-seeded by script for load/testing (${path.basename(videoPath)})`;
     console.log(`[upload ${i + 1}/${args.videos}] start user=${user.username} file=${path.basename(videoPath)}`);
