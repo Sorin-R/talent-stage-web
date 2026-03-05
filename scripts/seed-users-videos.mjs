@@ -40,6 +40,7 @@ const DEFAULTS = {
   deepseekApiKey: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || '',
   deepseekModel: process.env.SEED_DEEPSEEK_MODEL || 'deepseek-chat',
   deepseekTimeoutMs: Number(process.env.SEED_DEEPSEEK_TIMEOUT_MS || 20000),
+  runStamp: process.env.SEED_RUN_STAMP || '',
 };
 
 function parseArgs(argv) {
@@ -47,6 +48,7 @@ function parseArgs(argv) {
     ...DEFAULTS,
     dryRun: false,
     help: false,
+    loginOnly: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -66,6 +68,8 @@ function parseArgs(argv) {
     else if (a === '--deepseek-api-key') out.deepseekApiKey = argv[++i];
     else if (a === '--deepseek-model') out.deepseekModel = argv[++i];
     else if (a === '--deepseek-timeout-ms') out.deepseekTimeoutMs = Number(argv[++i]);
+    else if (a === '--run-stamp') out.runStamp = argv[++i];
+    else if (a === '--login-only') out.loginOnly = true;
     // Backward compatibility aliases (deprecated)
     else if (a === '--openai-api-key') out.deepseekApiKey = argv[++i];
     else if (a === '--openai-model') out.deepseekModel = argv[++i];
@@ -96,6 +100,8 @@ Options:
   --deepseek-api-key <key> DeepSeek API key for AI title/tags (default: env DEEPSEEK_API_KEY)
   --deepseek-model <name>  DeepSeek model (default: ${DEFAULTS.deepseekModel})
   --deepseek-timeout-ms <n> DeepSeek request timeout (default: ${DEFAULTS.deepseekTimeoutMs})
+  --run-stamp <stamp>      Reuse existing seed usernames for this run stamp (example: 202603051557)
+  --login-only             Login existing users only (do not create users)
   --openai-*               Backward-compatible aliases for deepseek flags
   --dry-run                Validate inputs and show plan only
   --help                   Show this help
@@ -379,12 +385,33 @@ async function registerOrLoginUser({
   emailDomain,
   usernamePrefix,
   runStamp,
+  loginOnly,
 }) {
   const seq = String(index + 1).padStart(2, '0');
   const username = makeUsername(usernamePrefix, runStamp, seq);
   const email = `${username}@${emailDomain}`.toLowerCase();
   const talent_type = TALENT_TYPES[index % TALENT_TYPES.length];
   const full_name = `Seed User ${index + 1}`;
+
+  if (loginOnly) {
+    const login = await fetchJson(`${apiBase}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (login.ok && login.data?.data?.token) {
+      console.log(`[user ${index + 1}/${total}] reused ${email}`);
+      return {
+        id: login.data?.data?.user?.id,
+        username,
+        email,
+        token: login.data.data.token,
+        talent_type,
+      };
+    }
+    const loginErrText = login.data?.error || login.data?.message || JSON.stringify(login.data);
+    throw new Error(`User ${index + 1} login failed (${email}): ${loginErrText}`);
+  }
 
   const registerBody = JSON.stringify({
     username,
@@ -508,6 +535,12 @@ async function main() {
   if (!Number.isFinite(args.deepseekTimeoutMs) || args.deepseekTimeoutMs <= 0) {
     throw new Error('--deepseek-timeout-ms must be > 0');
   }
+  if (args.runStamp && !/^[0-9]{8,20}$/.test(String(args.runStamp))) {
+    throw new Error('--run-stamp must be digits only (example: 202603051557)');
+  }
+  if (args.loginOnly && !String(args.runStamp || '').trim()) {
+    throw new Error('--login-only requires --run-stamp so the script can target existing users');
+  }
 
   const apiBase = normalizeApiBase(args.apiBase);
   const avatarEndpoint = normalizePathSuffix(args.avatarEndpoint);
@@ -522,7 +555,8 @@ async function main() {
     console.warn(`[seed] no avatars found in ${avatarDir}; users will be created without avatar upload.`);
   }
 
-  const runStamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 12);
+  const runStamp = String(args.runStamp || '').trim()
+    || new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 12);
 
   console.log('Seed config');
   console.log(`- API base:      ${apiBase}`);
@@ -536,6 +570,8 @@ async function main() {
   console.log(`- Avatar API:    ${avatarEndpoint || '(disabled)'}`);
   console.log(`- DeepSeek model: ${args.deepseekModel}`);
   console.log(`- DeepSeek:      ${args.deepseekApiKey ? 'enabled' : 'disabled (fallback titles/tags)'}`);
+  console.log(`- Run stamp:     ${runStamp}`);
+  console.log(`- Users mode:    ${args.loginOnly ? 'login-only (reuse existing)' : 'create-or-reuse'}`);
   console.log(`- Delay:         ${args.delayMs} ms`);
   console.log(`- Timeout:       ${args.uploadTimeoutMs} ms/upload`);
 
@@ -554,6 +590,7 @@ async function main() {
       emailDomain: args.emailDomain,
       usernamePrefix: args.usernamePrefix,
       runStamp,
+      loginOnly: args.loginOnly,
     });
     const avatarPath = avatarFiles.length > 0 ? avatarFiles[i % avatarFiles.length] : null;
     if (avatarPath) {
