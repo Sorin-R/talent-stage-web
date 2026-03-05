@@ -37,9 +37,9 @@ const DEFAULTS = {
   avatarEndpoint: process.env.SEED_AVATAR_ENDPOINT || '/users/me/avatar',
   delayMs: Number(process.env.SEED_DELAY_MS || 120),
   uploadTimeoutMs: Number(process.env.SEED_UPLOAD_TIMEOUT_MS || 300000),
-  openaiApiKey: process.env.OPENAI_API_KEY || '',
-  openaiModel: process.env.SEED_OPENAI_MODEL || 'gpt-3.5-turbo',
-  openaiTimeoutMs: Number(process.env.SEED_OPENAI_TIMEOUT_MS || 20000),
+  deepseekApiKey: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || '',
+  deepseekModel: process.env.SEED_DEEPSEEK_MODEL || 'deepseek-chat',
+  deepseekTimeoutMs: Number(process.env.SEED_DEEPSEEK_TIMEOUT_MS || 20000),
 };
 
 function parseArgs(argv) {
@@ -63,9 +63,13 @@ function parseArgs(argv) {
     else if (a === '--avatar-endpoint') out.avatarEndpoint = argv[++i];
     else if (a === '--delay-ms') out.delayMs = Number(argv[++i]);
     else if (a === '--upload-timeout-ms') out.uploadTimeoutMs = Number(argv[++i]);
-    else if (a === '--openai-api-key') out.openaiApiKey = argv[++i];
-    else if (a === '--openai-model') out.openaiModel = argv[++i];
-    else if (a === '--openai-timeout-ms') out.openaiTimeoutMs = Number(argv[++i]);
+    else if (a === '--deepseek-api-key') out.deepseekApiKey = argv[++i];
+    else if (a === '--deepseek-model') out.deepseekModel = argv[++i];
+    else if (a === '--deepseek-timeout-ms') out.deepseekTimeoutMs = Number(argv[++i]);
+    // Backward compatibility aliases (deprecated)
+    else if (a === '--openai-api-key') out.deepseekApiKey = argv[++i];
+    else if (a === '--openai-model') out.deepseekModel = argv[++i];
+    else if (a === '--openai-timeout-ms') out.deepseekTimeoutMs = Number(argv[++i]);
     else throw new Error(`Unknown arg: ${a}`);
   }
   return out;
@@ -89,9 +93,10 @@ Options:
   --avatar-endpoint <path> Avatar upload endpoint (default: ${DEFAULTS.avatarEndpoint})
   --delay-ms <n>           Delay between uploads (default: ${DEFAULTS.delayMs})
   --upload-timeout-ms <n>  Timeout per upload request (default: ${DEFAULTS.uploadTimeoutMs})
-  --openai-api-key <key>   OpenAI API key for AI title/tags (default: env OPENAI_API_KEY)
-  --openai-model <name>    OpenAI model (default: ${DEFAULTS.openaiModel})
-  --openai-timeout-ms <n>  OpenAI request timeout (default: ${DEFAULTS.openaiTimeoutMs})
+  --deepseek-api-key <key> DeepSeek API key for AI title/tags (default: env DEEPSEEK_API_KEY)
+  --deepseek-model <name>  DeepSeek model (default: ${DEFAULTS.deepseekModel})
+  --deepseek-timeout-ms <n> DeepSeek request timeout (default: ${DEFAULTS.deepseekTimeoutMs})
+  --openai-*               Backward-compatible aliases for deepseek flags
   --dry-run                Validate inputs and show plan only
   --help                   Show this help
 
@@ -231,7 +236,7 @@ async function fetchJson(url, options = {}) {
   return { status: res.status, ok: res.ok, data };
 }
 
-async function generateMetadataWithOpenAI({
+async function generateMetadataWithDeepSeek({
   apiKey,
   model,
   timeoutMs,
@@ -241,10 +246,10 @@ async function generateMetadataWithOpenAI({
   if (!apiKey) return null;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(`openai_timeout_${timeoutMs}ms`), timeoutMs);
+  const timer = setTimeout(() => controller.abort(`deepseek_timeout_${timeoutMs}ms`), timeoutMs);
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -253,7 +258,6 @@ async function generateMetadataWithOpenAI({
       body: JSON.stringify({
         model,
         temperature: 0.8,
-        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
@@ -274,7 +278,7 @@ Return JSON: {"title":"...", "tags":["tag1","tag2"]}`,
 
     const text = await res.text();
     if (!res.ok) {
-      throw new Error(`OpenAI HTTP ${res.status}: ${text}`);
+      throw new Error(`DeepSeek HTTP ${res.status}: ${text}`);
     }
     const parsed = text ? JSON.parse(text) : null;
     const content = parsed?.choices?.[0]?.message?.content;
@@ -435,8 +439,8 @@ async function main() {
   if (!Number.isFinite(args.uploadTimeoutMs) || args.uploadTimeoutMs <= 0) {
     throw new Error('--upload-timeout-ms must be > 0');
   }
-  if (!Number.isFinite(args.openaiTimeoutMs) || args.openaiTimeoutMs <= 0) {
-    throw new Error('--openai-timeout-ms must be > 0');
+  if (!Number.isFinite(args.deepseekTimeoutMs) || args.deepseekTimeoutMs <= 0) {
+    throw new Error('--deepseek-timeout-ms must be > 0');
   }
 
   const apiBase = normalizeApiBase(args.apiBase);
@@ -464,8 +468,8 @@ async function main() {
   console.log(`- Avatar dir:    ${avatarDir}`);
   console.log(`- Avatars:       ${avatarFiles.length}`);
   console.log(`- Avatar API:    ${avatarEndpoint || '(disabled)'}`);
-  console.log(`- OpenAI model:  ${args.openaiModel}`);
-  console.log(`- OpenAI:        ${args.openaiApiKey ? 'enabled' : 'disabled (fallback titles/tags)'}`);
+  console.log(`- DeepSeek model: ${args.deepseekModel}`);
+  console.log(`- DeepSeek:      ${args.deepseekApiKey ? 'enabled' : 'disabled (fallback titles/tags)'}`);
   console.log(`- Delay:         ${args.delayMs} ms`);
   console.log(`- Timeout:       ${args.uploadTimeoutMs} ms/upload`);
 
@@ -513,10 +517,10 @@ async function main() {
     const user = users[i % users.length];
     const videoPath = sourceVideos[i % sourceVideos.length];
     const baseName = path.parse(path.basename(videoPath)).name.replace(/[_-]+/g, ' ').trim() || 'video';
-    const aiMeta = await generateMetadataWithOpenAI({
-      apiKey: args.openaiApiKey,
-      model: args.openaiModel,
-      timeoutMs: args.openaiTimeoutMs,
+    const aiMeta = await generateMetadataWithDeepSeek({
+      apiKey: args.deepseekApiKey,
+      model: args.deepseekModel,
+      timeoutMs: args.deepseekTimeoutMs,
       baseName,
       talentType: user.talent_type,
     });
