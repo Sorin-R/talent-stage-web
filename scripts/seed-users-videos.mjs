@@ -22,6 +22,9 @@ const TALENT_TYPES = [
   'Viewer',
 ];
 
+const USERNAME_MAX_LEN = 30;
+const TITLE_MAX_LEN = 100;
+
 const DEFAULTS = {
   apiBase: process.env.SEED_API_BASE || 'http://localhost:3000/api',
   users: Number(process.env.SEED_USERS || 10),
@@ -30,8 +33,13 @@ const DEFAULTS = {
   emailDomain: process.env.SEED_EMAIL_DOMAIN || 'seed.local',
   usernamePrefix: process.env.SEED_USERNAME_PREFIX || 'seeduser',
   videoDir: process.env.SEED_VIDEO_DIR || './uploads/videos',
+  avatarDir: process.env.SEED_AVATAR_DIR || './avatars',
+  avatarEndpoint: process.env.SEED_AVATAR_ENDPOINT || '/users/me/avatar',
   delayMs: Number(process.env.SEED_DELAY_MS || 120),
   uploadTimeoutMs: Number(process.env.SEED_UPLOAD_TIMEOUT_MS || 300000),
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
+  openaiModel: process.env.SEED_OPENAI_MODEL || 'gpt-3.5-turbo',
+  openaiTimeoutMs: Number(process.env.SEED_OPENAI_TIMEOUT_MS || 20000),
 };
 
 function parseArgs(argv) {
@@ -51,8 +59,13 @@ function parseArgs(argv) {
     else if (a === '--email-domain') out.emailDomain = argv[++i];
     else if (a === '--username-prefix') out.usernamePrefix = argv[++i];
     else if (a === '--video-dir') out.videoDir = argv[++i];
+    else if (a === '--avatar-dir') out.avatarDir = argv[++i];
+    else if (a === '--avatar-endpoint') out.avatarEndpoint = argv[++i];
     else if (a === '--delay-ms') out.delayMs = Number(argv[++i]);
     else if (a === '--upload-timeout-ms') out.uploadTimeoutMs = Number(argv[++i]);
+    else if (a === '--openai-api-key') out.openaiApiKey = argv[++i];
+    else if (a === '--openai-model') out.openaiModel = argv[++i];
+    else if (a === '--openai-timeout-ms') out.openaiTimeoutMs = Number(argv[++i]);
     else throw new Error(`Unknown arg: ${a}`);
   }
   return out;
@@ -72,8 +85,13 @@ Options:
   --email-domain <domain>  Email domain for users (default: ${DEFAULTS.emailDomain})
   --username-prefix <txt>  Username prefix (default: ${DEFAULTS.usernamePrefix})
   --video-dir <path>       Folder with source videos (default: ${DEFAULTS.videoDir})
+  --avatar-dir <path>      Folder with source avatars (default: ${DEFAULTS.avatarDir})
+  --avatar-endpoint <path> Avatar upload endpoint (default: ${DEFAULTS.avatarEndpoint})
   --delay-ms <n>           Delay between uploads (default: ${DEFAULTS.delayMs})
   --upload-timeout-ms <n>  Timeout per upload request (default: ${DEFAULTS.uploadTimeoutMs})
+  --openai-api-key <key>   OpenAI API key for AI title/tags (default: env OPENAI_API_KEY)
+  --openai-model <name>    OpenAI model (default: ${DEFAULTS.openaiModel})
+  --openai-timeout-ms <n>  OpenAI request timeout (default: ${DEFAULTS.openaiTimeoutMs})
   --dry-run                Validate inputs and show plan only
   --help                   Show this help
 
@@ -87,6 +105,50 @@ function normalizeApiBase(raw) {
   if (!trimmed) throw new Error('Missing --api-base');
   if (trimmed.endsWith('/api')) return trimmed;
   return `${trimmed}/api`;
+}
+
+function normalizePathSuffix(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  return value.startsWith('/') ? value : `/${value}`;
+}
+
+function normalizeUsernamePrefix(raw) {
+  const cleaned = String(raw || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return cleaned || 'seeduser';
+}
+
+function makeUsername(prefix, runStamp, seq) {
+  const suffix = `${runStamp}${seq}`; // Always unique per run/index.
+  const maxPrefixLen = Math.max(1, USERNAME_MAX_LEN - suffix.length - 1);
+  const safePrefix = normalizeUsernamePrefix(prefix).slice(0, maxPrefixLen);
+  return `${safePrefix}_${suffix}`.slice(0, USERNAME_MAX_LEN);
+}
+
+function limitText(input, maxChars) {
+  const text = String(input || '').trim();
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars).trim();
+}
+
+function sanitizeTags(inputTags, talentType) {
+  const fallback = ['seed', 'talent', String(talentType || '').toLowerCase().replace(/\s+/g, '-')].filter(Boolean);
+  const source = Array.isArray(inputTags) ? inputTags : String(inputTags || '').split(',');
+  const tags = source
+    .map((tag) => String(tag || '').trim().toLowerCase())
+    .filter(Boolean)
+    .map((tag) => tag.replace(/[^a-z0-9 _-]/g, '').replace(/\s+/g, '-'))
+    .filter(Boolean);
+  const deduped = [];
+  for (const t of [...tags, ...fallback]) {
+    if (!deduped.includes(t)) deduped.push(t);
+    if (deduped.length >= 8) break;
+  }
+  return deduped;
 }
 
 function sleep(ms) {
@@ -103,6 +165,20 @@ async function collectVideoFiles(videoDir) {
   return files;
 }
 
+async function collectAvatarFiles(avatarDir) {
+  const allowed = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+  try {
+    const names = await fs.readdir(avatarDir);
+    const files = names
+      .map((name) => path.join(avatarDir, name))
+      .filter((p) => allowed.has(path.extname(p).toLowerCase()));
+    files.sort();
+    return files;
+  } catch {
+    return [];
+  }
+}
+
 function getMimeTypeForVideo(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === '.mp4' || ext === '.m4v') return 'video/mp4';
@@ -111,8 +187,15 @@ function getMimeTypeForVideo(filePath) {
   return 'application/octet-stream';
 }
 
-async function fileToBlob(filePath) {
-  const mime = getMimeTypeForVideo(filePath);
+function getMimeTypeForImage(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  return 'application/octet-stream';
+}
+
+async function fileToBlob(filePath, mime) {
   if (typeof fs.openAsBlob === 'function') {
     return fs.openAsBlob(filePath, { type: mime });
   }
@@ -148,10 +231,87 @@ async function fetchJson(url, options = {}) {
   return { status: res.status, ok: res.ok, data };
 }
 
-async function registerOrLoginUser({ apiBase, index, total, password, emailDomain, usernamePrefix }) {
+async function generateMetadataWithOpenAI({
+  apiKey,
+  model,
+  timeoutMs,
+  baseName,
+  talentType,
+}) {
+  if (!apiKey) return null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(`openai_timeout_${timeoutMs}ms`), timeoutMs);
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.8,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: 'You generate short, catchy video metadata. Return strict JSON only.',
+          },
+          {
+            role: 'user',
+            content: `Create metadata for a ${talentType} video named "${baseName}".
+Rules:
+- title max ${TITLE_MAX_LEN} chars
+- tags: 4-8 concise lowercase tags
+Return JSON: {"title":"...", "tags":["tag1","tag2"]}`,
+          },
+        ],
+      }),
+      signal: controller.signal,
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`OpenAI HTTP ${res.status}: ${text}`);
+    }
+    const parsed = text ? JSON.parse(text) : null;
+    const content = parsed?.choices?.[0]?.message?.content;
+    if (!content) return null;
+    const payload = JSON.parse(content);
+    const title = limitText(payload?.title || '', TITLE_MAX_LEN);
+    const tags = sanitizeTags(payload?.tags || [], talentType);
+    if (!title) return null;
+    return { title, tags };
+  } catch (err) {
+    console.warn(`[ai] metadata fallback: ${err?.message || err}`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function fallbackMetadata({ baseName, uploadIndex, talentType }) {
+  const title = limitText(`${baseName} #${String(uploadIndex + 1).padStart(3, '0')}`, TITLE_MAX_LEN);
+  const tags = sanitizeTags(
+    ['seed', 'test', String(talentType || '').toLowerCase().replace(/\s+/g, '-')],
+    talentType
+  );
+  return { title, tags };
+}
+
+async function registerOrLoginUser({
+  apiBase,
+  index,
+  total,
+  password,
+  emailDomain,
+  usernamePrefix,
+  runStamp,
+}) {
   const seq = String(index + 1).padStart(2, '0');
-  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 12);
-  const username = `${usernamePrefix}_${stamp}_${seq}`.toLowerCase();
+  const username = makeUsername(usernamePrefix, runStamp, seq);
   const email = `${username}@${emailDomain}`.toLowerCase();
   const talent_type = TALENT_TYPES[index % TALENT_TYPES.length];
   const full_name = `Seed User ${index + 1}`;
@@ -173,6 +333,7 @@ async function registerOrLoginUser({ apiBase, index, total, password, emailDomai
   if (reg.ok && reg.data?.data?.token) {
     console.log(`[user ${index + 1}/${total}] created ${email}`);
     return {
+      id: reg.data?.data?.user?.id,
       username,
       email,
       token: reg.data.data.token,
@@ -189,6 +350,7 @@ async function registerOrLoginUser({ apiBase, index, total, password, emailDomai
     if (login.ok && login.data?.data?.token) {
       console.log(`[user ${index + 1}/${total}] reused ${email}`);
       return {
+        id: login.data?.data?.user?.id,
         username,
         email,
         token: login.data.data.token,
@@ -201,12 +363,26 @@ async function registerOrLoginUser({ apiBase, index, total, password, emailDomai
   throw new Error(`User ${index + 1} failed (${email}): ${errText}`);
 }
 
-async function uploadOneVideo({ apiBase, token, title, description, talent_type, filePath, timeoutMs }) {
+async function uploadAvatarForUser({ apiBase, avatarEndpoint, token, avatarPath }) {
+  if (!avatarPath || !token) return { ok: false, skipped: true };
+  const avatarUrl = `${apiBase}${normalizePathSuffix(avatarEndpoint)}`;
+  const form = new FormData();
+  const blob = await fileToBlob(avatarPath, getMimeTypeForImage(avatarPath));
+  form.append('avatar', blob, path.basename(avatarPath));
+  return fetchJson(avatarUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+}
+
+async function uploadOneVideo({ apiBase, token, title, description, tags, talent_type, filePath, timeoutMs }) {
   const form = new FormData();
   form.append('title', title);
   form.append('description', description);
+  form.append('tags', tags);
   form.append('talent_type', talent_type);
-  const blob = await fileToBlob(filePath);
+  const blob = await fileToBlob(filePath, getMimeTypeForVideo(filePath));
   form.append('video', blob, path.basename(filePath));
 
   return fetchJson(`${apiBase}/videos`, {
@@ -232,13 +408,24 @@ async function main() {
   if (!Number.isFinite(args.uploadTimeoutMs) || args.uploadTimeoutMs <= 0) {
     throw new Error('--upload-timeout-ms must be > 0');
   }
+  if (!Number.isFinite(args.openaiTimeoutMs) || args.openaiTimeoutMs <= 0) {
+    throw new Error('--openai-timeout-ms must be > 0');
+  }
 
   const apiBase = normalizeApiBase(args.apiBase);
+  const avatarEndpoint = normalizePathSuffix(args.avatarEndpoint);
   const videoDir = path.resolve(process.cwd(), args.videoDir);
+  const avatarDir = path.resolve(process.cwd(), args.avatarDir);
   const sourceVideos = await collectVideoFiles(videoDir);
+  const avatarFiles = await collectAvatarFiles(avatarDir);
   if (sourceVideos.length === 0) {
     throw new Error(`No source videos found in ${videoDir}`);
   }
+  if (avatarFiles.length === 0) {
+    console.warn(`[seed] no avatars found in ${avatarDir}; users will be created without avatar upload.`);
+  }
+
+  const runStamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 12);
 
   console.log('Seed config');
   console.log(`- API base:      ${apiBase}`);
@@ -247,6 +434,11 @@ async function main() {
   console.log(`- Password:      ${'*'.repeat(Math.min(String(args.password).length, 12))}`);
   console.log(`- Video dir:     ${videoDir}`);
   console.log(`- Source videos: ${sourceVideos.length}`);
+  console.log(`- Avatar dir:    ${avatarDir}`);
+  console.log(`- Avatars:       ${avatarFiles.length}`);
+  console.log(`- Avatar API:    ${avatarEndpoint || '(disabled)'}`);
+  console.log(`- OpenAI model:  ${args.openaiModel}`);
+  console.log(`- OpenAI:        ${args.openaiApiKey ? 'enabled' : 'disabled (fallback titles/tags)'}`);
   console.log(`- Delay:         ${args.delayMs} ms`);
   console.log(`- Timeout:       ${args.uploadTimeoutMs} ms/upload`);
 
@@ -264,7 +456,27 @@ async function main() {
       password: args.password,
       emailDomain: args.emailDomain,
       usernamePrefix: args.usernamePrefix,
+      runStamp,
     });
+    const avatarPath = avatarFiles.length > 0 ? avatarFiles[i % avatarFiles.length] : null;
+    if (avatarPath) {
+      try {
+        const avatarRes = await uploadAvatarForUser({
+          apiBase,
+          avatarEndpoint,
+          token: user.token,
+          avatarPath,
+        });
+        if (avatarRes.ok) {
+          console.log(`[avatar ${i + 1}/${args.users}] ok (${path.basename(avatarPath)})`);
+        } else if (!avatarRes.skipped) {
+          const msg = avatarRes.data?.error || avatarRes.data?.message || JSON.stringify(avatarRes.data);
+          console.warn(`[avatar ${i + 1}/${args.users}] failed (${path.basename(avatarPath)}): ${msg}`);
+        }
+      } catch (err) {
+        console.warn(`[avatar ${i + 1}/${args.users}] failed (${path.basename(avatarPath)}): ${err?.message || err}`);
+      }
+    }
     users.push(user);
   }
 
@@ -273,7 +485,21 @@ async function main() {
   for (let i = 0; i < args.videos; i += 1) {
     const user = users[i % users.length];
     const videoPath = sourceVideos[i % sourceVideos.length];
-    const title = `Seed video ${String(i + 1).padStart(3, '0')}`;
+    const baseName = path.parse(path.basename(videoPath)).name.replace(/[_-]+/g, ' ').trim() || 'video';
+    const aiMeta = await generateMetadataWithOpenAI({
+      apiKey: args.openaiApiKey,
+      model: args.openaiModel,
+      timeoutMs: args.openaiTimeoutMs,
+      baseName,
+      talentType: user.talent_type,
+    });
+    const meta = aiMeta || fallbackMetadata({
+      baseName,
+      uploadIndex: i,
+      talentType: user.talent_type,
+    });
+    const title = limitText(meta.title, TITLE_MAX_LEN);
+    const tags = sanitizeTags(meta.tags, user.talent_type).join(',');
     const description = `Auto-seeded by script for load/testing (${path.basename(videoPath)})`;
     console.log(`[upload ${i + 1}/${args.videos}] start user=${user.username} file=${path.basename(videoPath)}`);
     let res;
@@ -283,6 +509,7 @@ async function main() {
         token: user.token,
         title,
         description,
+        tags,
         talent_type: user.talent_type,
         filePath: videoPath,
         timeoutMs: args.uploadTimeoutMs,
