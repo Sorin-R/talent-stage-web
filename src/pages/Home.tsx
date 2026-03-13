@@ -115,6 +115,7 @@ export default function Home({ onNav }: Props) {
   const creatorSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const preloadWaitTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const snapBackTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const postCommitCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wheelTimer        = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startupRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -480,6 +481,7 @@ export default function Home({ onNav }: Props) {
     return () => {
       if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
       if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
+      if (postCommitCleanupTimer.current) clearTimeout(postCommitCleanupTimer.current);
       if (wheelTimer.current) clearTimeout(wheelTimer.current);
       if (playbackIndicatorTimer.current) clearTimeout(playbackIndicatorTimer.current);
       if (startupRetryTimer.current) clearTimeout(startupRetryTimer.current);
@@ -638,11 +640,23 @@ export default function Home({ onNav }: Props) {
   const clearStrip = useCallback(() => {
     if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
     if (snapBackTimer.current) clearTimeout(snapBackTimer.current);
+    if (postCommitCleanupTimer.current) clearTimeout(postCommitCleanupTimer.current);
     setStripOffset(0);
     setStripDir(null);
     setStripNext(null);
     pausedByScrollRef.current = false;
     resetOverlaySwipeState();
+  }, [resetOverlaySwipeState]);
+
+  const schedulePostCommitCleanup = useCallback(() => {
+    if (postCommitCleanupTimer.current) clearTimeout(postCommitCleanupTimer.current);
+    // Keep overlay/peek state for a brief moment so handoff to active video has no pop.
+    postCommitCleanupTimer.current = setTimeout(() => {
+      postCommitCleanupTimer.current = null;
+      setStripDir(null);
+      setStripNext(null);
+      resetOverlaySwipeState();
+    }, 90);
   }, [resetOverlaySwipeState]);
 
   // ── Next-playable index ──────────────────────────────────────────────────
@@ -1139,9 +1153,7 @@ export default function Home({ onNav }: Props) {
       setAutoplayBlocked(false);
       setIsPaused(false);
       setStripOffset(0);
-      setStripDir(null);
-      setStripNext(null);
-      resetOverlaySwipeState();
+      schedulePostCommitCleanup();
       pausedByScrollRef.current = false;
       setIsAnimating(false);
       setNextVideoReady(false);
@@ -1173,7 +1185,7 @@ export default function Home({ onNav }: Props) {
     };
     inactive.addEventListener('canplay', onReady, { once: true });
     inactive.addEventListener('error', onError, { once: true });
-  }, [feedMuted, getActiveRef, getInactiveRef, resetOverlaySwipeState, safePlay, setFeedIndex, setCurrentVideo, settlePreloadedVideo, skipToNextPlayable]);
+  }, [feedMuted, getActiveRef, getInactiveRef, resetOverlaySwipeState, safePlay, schedulePostCommitCleanup, setFeedIndex, setCurrentVideo, settlePreloadedVideo, skipToNextPlayable]);
 
   // ── Momentum scroll ────────────────────────────────────────────────────
   const momentumApi = useMomentumScroll({
