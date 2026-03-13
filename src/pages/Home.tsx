@@ -32,6 +32,8 @@ const DEFAULT_SWIPE_LOCK_ENABLED = true;
 const DEFAULT_SWIPE_LOCK_VISIBLE = false;
 const DEFAULT_SWIPE_LOCK_OPACITY = 0.75;
 const FEED_SEEN_STORAGE_PREFIX = 'ts_feed_seen_v1';
+const FEED_PAGE_SIZE = 50;
+const FEED_MAX_PAGES = 20;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -377,14 +379,38 @@ export default function Home({ onNav }: Props) {
     let q = '';
     if (talentType) q += '?talent_type=' + encodeURIComponent(talentType);
     if (search) q += (q ? '&' : '?') + 'search=' + encodeURIComponent(search);
-    const data = await apiFetch<PaginatedResponse<Video>>('/videos' + q);
-    // A newer loadFeed call won the race; do not trigger startup retries.
-    if (seq !== loadFeedSeqRef.current) return true;
-    if (!data.success || !data.data) {
-      toast('Could not load feed');
-      return false;
+    const allItems: Video[] = [];
+    let page = 1;
+    let totalPages = 1;
+
+    while (page <= totalPages && page <= FEED_MAX_PAGES) {
+      const pageUrl = '/videos' + q + (q ? '&' : '?') + `page=${page}&limit=${FEED_PAGE_SIZE}`;
+      const data = await apiFetch<PaginatedResponse<Video>>(pageUrl);
+
+      // A newer loadFeed call won the race; do not trigger startup retries.
+      if (seq !== loadFeedSeqRef.current) return true;
+
+      if (!data.success || !data.data) {
+        toast('Could not load feed');
+        return false;
+      }
+
+      allItems.push(...(data.data.items || []));
+      const parsedTotalPages = Number(data.data.totalPages || 1);
+      totalPages = Number.isFinite(parsedTotalPages)
+        ? Math.max(1, Math.floor(parsedTotalPages))
+        : 1;
+
+      if ((data.data.items || []).length === 0) break;
+      page += 1;
     }
-    const rawItems = data.data.items || [];
+
+    const dedupMap = new Map<string, Video>();
+    for (const item of allItems) {
+      if (!item?.id) continue;
+      if (!dedupMap.has(item.id)) dedupMap.set(item.id, item);
+    }
+    const rawItems = Array.from(dedupMap.values());
     const categoryFilter = (talentType || '').trim().toLowerCase();
     const items = categoryFilter
       ? rawItems.filter((v) => (v.talent_type || '').trim().toLowerCase() === categoryFilter)
