@@ -55,21 +55,52 @@ jobs:
 
       - name: Deploy dist to Hostinger
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          WEB_DEPLOY_PATH: ${{ secrets.WEB_DEPLOY_PATH }}
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT || vars.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          WEB_DEPLOY_PATH: ${{ secrets.WEB_DEPLOY_PATH || vars.WEB_DEPLOY_PATH }}
         run: |
           set -euo pipefail
-          : "${SSH_HOST:?Missing secret SSH_HOST}"
-          : "${SSH_PORT:?Missing secret SSH_PORT}"
-          : "${SSH_USER:?Missing secret SSH_USER}"
-          : "${WEB_DEPLOY_PATH:?Missing secret WEB_DEPLOY_PATH}"
+          clean_one_line() {
+            # Preserve internal spaces; remove CR/LF and surrounding whitespace.
+            printf '%s' "$1" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+          }
 
-          ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" "mkdir -p '$WEB_DEPLOY_PATH'"
-          rsync -az --delete \
-            -e "ssh -i ~/.ssh/id_ed25519 -p $SSH_PORT -o StrictHostKeyChecking=no" \
-            dist/ "$SSH_USER@$SSH_HOST:$WEB_DEPLOY_PATH/"
+          SSH_HOST="$(clean_one_line "${SSH_HOST:-}")"
+          SSH_PORT="$(clean_one_line "${SSH_PORT:-}")"
+          SSH_USER="$(clean_one_line "${SSH_USER:-}")"
+          WEB_DEPLOY_PATH="$(clean_one_line "${WEB_DEPLOY_PATH:-}")"
+
+          : "${SSH_HOST:?Missing SSH_HOST (secret or variable)}"
+          : "${SSH_PORT:?Missing SSH_PORT (secret or variable)}"
+          : "${SSH_USER:?Missing SSH_USER (secret or variable)}"
+          : "${WEB_DEPLOY_PATH:?Missing WEB_DEPLOY_PATH (secret or variable)}"
+
+          SSH_OPTS="-i ~/.ssh/id_ed25519 -p $SSH_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"
+
+          for attempt in 1 2 3; do
+            if ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "mkdir -p '$WEB_DEPLOY_PATH'"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "SSH mkdir failed after 3 attempts"
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
+
+          for attempt in 1 2 3; do
+            if rsync -az --delete \
+              -e "ssh $SSH_OPTS" \
+              dist/ "$SSH_USER@$SSH_HOST:$WEB_DEPLOY_PATH/"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "rsync deploy failed after 3 attempts"
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
 
   update-backend-stream-env:
     runs-on: ubuntu-latest
@@ -86,43 +117,62 @@ jobs:
 
       - name: Update backend env and restart
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          BACKEND_ENV_PATH: ${{ secrets.BACKEND_ENV_PATH }}
-          BACKEND_APP_PATH: ${{ secrets.BACKEND_APP_PATH }}
-          BACKEND_RESTART_CMD: ${{ secrets.BACKEND_RESTART_CMD }}
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT || vars.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          BACKEND_ENV_PATH: ${{ secrets.BACKEND_ENV_PATH || vars.BACKEND_ENV_PATH }}
+          BACKEND_APP_PATH: ${{ secrets.BACKEND_APP_PATH || vars.BACKEND_APP_PATH }}
+          BACKEND_RESTART_CMD: ${{ secrets.BACKEND_RESTART_CMD || vars.BACKEND_RESTART_CMD }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_STREAM_TOKEN: ${{ secrets.CF_STREAM_TOKEN }}
           CF_STREAM_CUSTOMER_CODE: ${{ secrets.CF_STREAM_CUSTOMER_CODE }}
           CF_STREAM_MAX_DURATION_SEC: ${{ vars.CF_STREAM_MAX_DURATION_SEC }}
         run: |
           set -euo pipefail
-          : "${SSH_HOST:?Missing secret SSH_HOST}"
-          : "${SSH_PORT:?Missing secret SSH_PORT}"
-          : "${SSH_USER:?Missing secret SSH_USER}"
-          : "${BACKEND_ENV_PATH:?Missing secret BACKEND_ENV_PATH}"
-          : "${BACKEND_APP_PATH:?Missing secret BACKEND_APP_PATH}"
-          : "${BACKEND_RESTART_CMD:?Missing secret BACKEND_RESTART_CMD}"
+
+          clean_single_line() {
+            printf '%s' "$1" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+          }
+
+          clean_multiline_to_spaces() {
+            printf '%s' "$1" | tr '\r\n' ' ' | sed -e 's/[[:space:]]\+/ /g' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+          }
+
+          SSH_HOST="$(clean_single_line "${SSH_HOST:-}")"
+          SSH_PORT="$(clean_single_line "${SSH_PORT:-}")"
+          SSH_USER="$(clean_single_line "${SSH_USER:-}")"
+          BACKEND_ENV_PATH="$(clean_single_line "${BACKEND_ENV_PATH:-}")"
+          BACKEND_APP_PATH="$(clean_single_line "${BACKEND_APP_PATH:-}")"
+          BACKEND_RESTART_CMD="$(clean_multiline_to_spaces "${BACKEND_RESTART_CMD:-}")"
+
+          : "${SSH_HOST:?Missing SSH_HOST (secret or variable)}"
+          : "${SSH_PORT:?Missing SSH_PORT (secret or variable)}"
+          : "${SSH_USER:?Missing SSH_USER (secret or variable)}"
+          : "${BACKEND_ENV_PATH:?Missing BACKEND_ENV_PATH (secret or variable)}"
+          : "${BACKEND_APP_PATH:?Missing BACKEND_APP_PATH (secret or variable)}"
+          : "${BACKEND_RESTART_CMD:?Missing BACKEND_RESTART_CMD (secret or variable)}"
           : "${CF_ACCOUNT_ID:?Missing secret CF_ACCOUNT_ID}"
           : "${CF_STREAM_TOKEN:?Missing secret CF_STREAM_TOKEN}"
 
+          BACKEND_ENV_PATH_B64="$(printf '%s' "$BACKEND_ENV_PATH" | base64 | tr -d '\n')"
+          BACKEND_APP_PATH_B64="$(printf '%s' "$BACKEND_APP_PATH" | base64 | tr -d '\n')"
+          BACKEND_RESTART_CMD_B64="$(printf '%s' "$BACKEND_RESTART_CMD" | base64 | tr -d '\n')"
           CF_ACCOUNT_ID_B64="$(printf '%s' "$CF_ACCOUNT_ID" | base64 | tr -d '\n')"
           CF_STREAM_TOKEN_B64="$(printf '%s' "$CF_STREAM_TOKEN" | base64 | tr -d '\n')"
           CF_STREAM_CUSTOMER_CODE_B64="$(printf '%s' "${CF_STREAM_CUSTOMER_CODE:-}" | base64 | tr -d '\n')"
           CF_STREAM_MAX_DURATION_SEC="${CF_STREAM_MAX_DURATION_SEC:-900}"
 
-          ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" \
-            "BACKEND_ENV_PATH='$BACKEND_ENV_PATH' BACKEND_APP_PATH='$BACKEND_APP_PATH' BACKEND_RESTART_CMD='$BACKEND_RESTART_CMD' CF_STREAM_MAX_DURATION_SEC='$CF_STREAM_MAX_DURATION_SEC' CF_ACCOUNT_ID_B64='$CF_ACCOUNT_ID_B64' CF_STREAM_TOKEN_B64='$CF_STREAM_TOKEN_B64' CF_STREAM_CUSTOMER_CODE_B64='$CF_STREAM_CUSTOMER_CODE_B64' bash -s" <<'EOF'
+          ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=20 "$SSH_USER@$SSH_HOST" \
+            "BACKEND_ENV_PATH_B64='$BACKEND_ENV_PATH_B64' BACKEND_APP_PATH_B64='$BACKEND_APP_PATH_B64' BACKEND_RESTART_CMD_B64='$BACKEND_RESTART_CMD_B64' CF_STREAM_MAX_DURATION_SEC='$CF_STREAM_MAX_DURATION_SEC' CF_ACCOUNT_ID_B64='$CF_ACCOUNT_ID_B64' CF_STREAM_TOKEN_B64='$CF_STREAM_TOKEN_B64' CF_STREAM_CUSTOMER_CODE_B64='$CF_STREAM_CUSTOMER_CODE_B64' bash -s" <<'EOF'
           set -euo pipefail
 
           decode_b64() {
             printf '%s' "$1" | base64 --decode
           }
 
-          ENV_FILE="$BACKEND_ENV_PATH"
-          APP_PATH="$BACKEND_APP_PATH"
-          RESTART_CMD="$BACKEND_RESTART_CMD"
+          ENV_FILE="$(decode_b64 "$BACKEND_ENV_PATH_B64")"
+          APP_PATH="$(decode_b64 "$BACKEND_APP_PATH_B64")"
+          RESTART_CMD="$(decode_b64 "$BACKEND_RESTART_CMD_B64")"
 
           CF_ACCOUNT_ID="$(decode_b64 "$CF_ACCOUNT_ID_B64")"
           CF_STREAM_TOKEN="$(decode_b64 "$CF_STREAM_TOKEN_B64")"
