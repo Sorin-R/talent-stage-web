@@ -1333,6 +1333,12 @@ export default function Home({ onNav }: Props) {
         setStripNext(pendingVideo);
         setStripSnap(true);
         setStripOffset(pendingTarget);
+
+        // Start finalization timer from actual animation start, not goNext call time.
+        if (slideTimer.current) clearTimeout(slideTimer.current);
+        slideTimer.current = setTimeout(() => {
+          finalizeSwipe(txn);
+        }, SLIDE_MS + 140);
       };
 
       if (useOverlayDelay) {
@@ -1343,11 +1349,6 @@ export default function Home({ onNav }: Props) {
       } else {
         kick();
       }
-
-      if (slideTimer.current) clearTimeout(slideTimer.current);
-      slideTimer.current = setTimeout(() => {
-        finalizeSwipe(txn);
-      }, SLIDE_MS + 140);
     };
 
     const inactive = getInactiveRef().current;
@@ -1358,75 +1359,12 @@ export default function Home({ onNav }: Props) {
 
     if (readyNow) {
       setNextVideoReady(true);
-      startTransition();
-      return;
-    }
-
-    // Keep strip primed while waiting so iOS overlay and strip state stay in sync.
-    const primedPending = pendingSwipeRef.current;
-    if (!primedPending || primedPending.txn !== txn) return;
-    setStripSnap(false);
-    setStripDir(primedPending.direction);
-    setStripNext(primedPending.nextVideo);
-
-    if (slideTimer.current) clearTimeout(slideTimer.current);
-    if (preloadWaitTimer.current) clearTimeout(preloadWaitTimer.current);
-
-    if (!inactive || preloadedVideoId.current !== nextVideo.id || inactive.readyState < 2) {
+    } else if (!inactive || preloadedVideoId.current !== nextVideo.id || inactive.readyState < 2) {
       primeInactive(nextVideo);
     }
 
-    const waitEl = getInactiveRef().current;
-    if (!waitEl) {
-      pendingSwipeRef.current = null;
-      setIsAnimating(false);
-      clearStrip();
-      return;
-    }
-
-    const onReady = () => {
-      const pending = pendingSwipeRef.current;
-      if (!pending || pending.txn !== txn) return;
-      if (waitEl.dataset.videoId !== pending.nextVideo.id || preloadedVideoId.current !== pending.nextVideo.id) return;
-      settlePreloadedVideo(waitEl);
-      setNextVideoReady(true);
-      startTransition();
-    };
-
-    const onError = () => {
-      const pending = pendingSwipeRef.current;
-      if (!pending || pending.txn !== txn) return;
-      if (preloadWaitTimer.current) {
-        clearTimeout(preloadWaitTimer.current);
-        preloadWaitTimer.current = null;
-      }
-      if (transitionKickTimer.current) {
-        clearTimeout(transitionKickTimer.current);
-        transitionKickTimer.current = null;
-      }
-      pendingSwipeRef.current = null;
-      setIsAnimating(false);
-      clearStrip();
-      failedVideos.current.add(nextVideo.id);
-      skipToNextPlayable();
-    };
-
-    waitEl.addEventListener('canplay', onReady, { once: true });
-    waitEl.addEventListener('error', onError, { once: true });
-
-    preloadWaitTimer.current = setTimeout(() => {
-      const pending = pendingSwipeRef.current;
-      if (!pending || pending.txn !== txn) return;
-      if (transitionKickTimer.current) {
-        clearTimeout(transitionKickTimer.current);
-        transitionKickTimer.current = null;
-      }
-      pendingSwipeRef.current = null;
-      setIsAnimating(false);
-      clearStrip();
-      failedVideos.current.add(nextVideo.id);
-      skipToNextPlayable();
-    }, 3000);
+    // Always animate immediately — finalizeSwipe handles the load-wait.
+    startTransition();
   }, [
     containerH, currentVideo, feedIndex, feedVideos, finalizeSwipe, getInactiveRef,
     getNextPlayableIndex, getPlaybackMetrics, isIOSDevice, loggedIn, swipeCountdown,
