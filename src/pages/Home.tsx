@@ -29,7 +29,7 @@ const OVERLAY_FRAME_CACHE_LIMIT = 20;
 const OVERLAY_THUMB_CACHE_LIMIT = 40;
 const DEFAULT_SWIPE_LOCK_MS = 5000;
 const DEFAULT_SWIPE_LOCK_ENABLED = true;
-const DEFAULT_SWIPE_LOCK_VISIBLE = true;
+const DEFAULT_SWIPE_LOCK_VISIBLE = false;
 const DEFAULT_SWIPE_LOCK_OPACITY = 0.75;
 
 interface Props {
@@ -540,7 +540,7 @@ export default function Home({ onNav }: Props) {
       }
 
       const visible = toBool(data.data.swipe_timer_visible);
-      if (visible !== null) setSwipeTimerVisible(visible);
+      setSwipeTimerVisible(visible === null ? DEFAULT_SWIPE_LOCK_VISIBLE : visible);
 
       const rawOpacity = Number(data.data.swipe_timer_opacity);
       if (Number.isFinite(rawOpacity)) {
