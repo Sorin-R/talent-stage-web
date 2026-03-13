@@ -41,6 +41,7 @@ const DEFAULTS = {
   deepseekModel: process.env.SEED_DEEPSEEK_MODEL || 'deepseek-chat',
   deepseekTimeoutMs: Number(process.env.SEED_DEEPSEEK_TIMEOUT_MS || 20000),
   runStamp: process.env.SEED_RUN_STAMP || '',
+  streamUploads: String(process.env.SEED_STREAM_UPLOADS || '').toLowerCase() === 'true',
 };
 
 function parseArgs(argv) {
@@ -49,6 +50,7 @@ function parseArgs(argv) {
     dryRun: false,
     help: false,
     loginOnly: false,
+    streamUploads: DEFAULTS.streamUploads,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -70,6 +72,7 @@ function parseArgs(argv) {
     else if (a === '--deepseek-timeout-ms') out.deepseekTimeoutMs = Number(argv[++i]);
     else if (a === '--run-stamp') out.runStamp = argv[++i];
     else if (a === '--login-only') out.loginOnly = true;
+    else if (a === '--stream') out.streamUploads = true;
     // Backward compatibility aliases (deprecated)
     else if (a === '--openai-api-key') out.deepseekApiKey = argv[++i];
     else if (a === '--openai-model') out.deepseekModel = argv[++i];
@@ -102,6 +105,7 @@ Options:
   --deepseek-timeout-ms <n> DeepSeek request timeout (default: ${DEFAULTS.deepseekTimeoutMs})
   --run-stamp <stamp>      Reuse existing seed usernames for this run stamp (example: 202603051557)
   --login-only             Login existing users only (do not create users)
+  --stream                 Upload videos via Cloudflare Stream direct-upload endpoints
   --openai-*               Backward-compatible aliases for deepseek flags
   --dry-run                Validate inputs and show plan only
   --help                   Show this help
@@ -517,6 +521,115 @@ async function uploadOneVideo({ apiBase, token, title, description, tags, talent
   });
 }
 
+function toBase64Utf8(input) {
+  return Buffer.from(String(input || ''), 'utf8').toString('base64');
+}
+
+async function uploadBinary(url, blob, mime, timeoutMs, method = 'PUT') {
+  return fetchJson(url, {
+    method,
+    headers: mime ? { 'Content-Type': mime } : undefined,
+    body: blob,
+    timeoutMs,
+  });
+}
+
+async function uploadMultipart(url, blob, filePath, timeoutMs) {
+  const form = new FormData();
+  form.append('file', blob, path.basename(filePath));
+  return fetchJson(url, {
+    method: 'POST',
+    body: form,
+    timeoutMs,
+  });
+}
+
+async function uploadTus(url, blob, filePath, mime, timeoutMs) {
+  const create = await fetchJson(url, {
+    method: 'POST',
+    headers: {
+      'Tus-Resumable': '1.0.0',
+      'Upload-Length': String(blob.size || 0),
+      'Upload-Metadata': `filename ${toBase64Utf8(path.basename(filePath))},filetype ${toBase64Utf8(mime || 'application/octet-stream')}`,
+    },
+    timeoutMs,
+  });
+
+  let patchUrl = url;
+  const location = create?.data?.location || create?.data?.Location;
+  if (location && typeof location === 'string') {
+    patchUrl = new URL(location, url).toString();
+  }
+
+  return fetchJson(patchUrl, {
+    method: 'PATCH',
+    headers: {
+      'Tus-Resumable': '1.0.0',
+      'Upload-Offset': '0',
+      'Content-Type': 'application/offset+octet-stream',
+    },
+    body: blob,
+    timeoutMs,
+  });
+}
+
+async function uploadOneVideoViaStream({
+  apiBase,
+  token,
+  title,
+  description,
+  tags,
+  talent_type,
+  filePath,
+  timeoutMs,
+}) {
+  const mime = getMimeTypeForVideo(filePath);
+  const blob = await fileToBlob(filePath, mime);
+  const direct = await fetchJson(`${apiBase}/videos/stream/direct-upload-url`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      title,
+      description,
+      tags,
+      talent_type,
+      original_name: path.basename(filePath),
+      file_size: blob.size || 0,
+    }),
+    timeoutMs,
+  });
+
+  if (!direct.ok) return direct;
+  const uploadUrl = direct.data?.data?.upload_url;
+  const videoId = direct.data?.data?.video_id;
+  if (!uploadUrl || !videoId) {
+    return { ok: false, status: 502, data: { error: 'Missing upload_url/video_id from direct upload response' } };
+  }
+
+  // Try multiple protocols to match account/direct-upload behavior.
+  let uploaded = await uploadBinary(uploadUrl, blob, mime, timeoutMs, 'PUT');
+  if (!uploaded.ok) uploaded = await uploadMultipart(uploadUrl, blob, filePath, timeoutMs);
+  if (!uploaded.ok) uploaded = await uploadTus(uploadUrl, blob, filePath, mime, timeoutMs);
+  if (!uploaded.ok) return uploaded;
+
+  const complete = await fetchJson(`${apiBase}/videos/stream/complete`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      video_id: videoId,
+      publish: true,
+    }),
+    timeoutMs,
+  });
+  return complete;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -572,6 +685,7 @@ async function main() {
   console.log(`- DeepSeek:      ${args.deepseekApiKey ? 'enabled' : 'disabled (fallback titles/tags)'}`);
   console.log(`- Run stamp:     ${runStamp}`);
   console.log(`- Users mode:    ${args.loginOnly ? 'login-only (reuse existing)' : 'create-or-reuse'}`);
+  console.log(`- Upload mode:   ${args.streamUploads ? 'cloudflare-stream' : 'api-multipart'}`);
   console.log(`- Delay:         ${args.delayMs} ms`);
   console.log(`- Timeout:       ${args.uploadTimeoutMs} ms/upload`);
 
@@ -642,16 +756,29 @@ async function main() {
     console.log(`[upload ${i + 1}/${args.videos}] start user=${user.username} file=${path.basename(videoPath)}`);
     let res;
     try {
-      res = await uploadOneVideo({
-        apiBase,
-        token: user.token,
-        title,
-        description,
-        tags,
-        talent_type: user.talent_type,
-        filePath: videoPath,
-        timeoutMs: args.uploadTimeoutMs,
-      });
+      if (args.streamUploads) {
+        res = await uploadOneVideoViaStream({
+          apiBase,
+          token: user.token,
+          title,
+          description,
+          tags,
+          talent_type: user.talent_type,
+          filePath: videoPath,
+          timeoutMs: args.uploadTimeoutMs,
+        });
+      } else {
+        res = await uploadOneVideo({
+          apiBase,
+          token: user.token,
+          title,
+          description,
+          tags,
+          talent_type: user.talent_type,
+          filePath: videoPath,
+          timeoutMs: args.uploadTimeoutMs,
+        });
+      }
     } catch (err) {
       failed += 1;
       console.error(`[upload ${i + 1}/${args.videos}] failed: ${err?.message || err}`);
