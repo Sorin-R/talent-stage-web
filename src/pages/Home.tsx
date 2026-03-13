@@ -131,6 +131,7 @@ export default function Home({ onNav }: Props) {
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastCaptureTimeRef = useRef(0);
   const pausedByScrollRef = useRef(false);
+  const lastDragMoveAtRef = useRef(0);
   const swipeLockUntilRef = useRef(0);
   const swipeCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const watchMilestonesRef = useRef<Set<number>>(new Set());
@@ -1014,6 +1015,7 @@ export default function Home({ onNav }: Props) {
   // ── Drag (finger follows strip) ──────────────────────────────────────────
   const onDragMove = useCallback((dy: number) => {
     if (isAnimating || !currentVideo) return;
+    lastDragMoveAtRef.current = Date.now();
     const nextIdx = getNextPlayableIndex();
     if (nextIdx === null || nextIdx === feedIndex) return;
     const nextVideo = feedVideos[nextIdx];
@@ -1071,6 +1073,7 @@ export default function Home({ onNav }: Props) {
 
   // ── Snap back when gesture didn't cross threshold ────────────────────────
   const onGestureEnd = useCallback((didSwipe: boolean) => {
+    lastDragMoveAtRef.current = 0;
     if (didSwipe) {
       setStripSnap(false); // goNext will drive the rest
       pausedByScrollRef.current = false;
@@ -1109,6 +1112,20 @@ export default function Home({ onNav }: Props) {
       resetOverlaySwipeState();
     }, 220);
   }, [getActiveRef, resetOverlaySwipeState, safePlay, stripNext, stripOffset]);
+
+  // Failsafe: if strip ever gets stuck between slots after gesture end, hard-reset to center.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const hasMidOffset = Math.abs(stripOffset) > 2;
+      const hasPendingStrip = stripDir !== null || stripNext !== null;
+      if (!hasMidOffset || !hasPendingStrip || isAnimating) return;
+      const draggingRecently = lastDragMoveAtRef.current > 0
+        && (Date.now() - lastDragMoveAtRef.current) < 220;
+      if (draggingRecently) return;
+      clearStrip();
+    }, 180);
+    return () => clearInterval(timer);
+  }, [clearStrip, isAnimating, stripDir, stripNext, stripOffset]);
 
   const primeInactive = useCallback((video: Video) => {
     const el = getInactiveRef().current;
