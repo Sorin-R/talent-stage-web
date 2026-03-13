@@ -71,3 +71,31 @@ export default defineConfig([
   },
 ])
 ```
+
+## GitHub Deploy (Hostinger + Cloudflare Stream)
+
+Workflow file:
+- `.github/workflows/deploy-hostinger-cloudflare.yml`
+
+Required GitHub **Secrets** (`Settings -> Secrets and variables -> Actions`):
+- `SSH_HOST`
+- `SSH_PORT`
+- `SSH_USER`
+- `SSH_PRIVATE_KEY`
+- `WEB_DEPLOY_PATH`
+- `BACKEND_ENV_PATH`
+- `BACKEND_APP_PATH`
+- `BACKEND_RESTART_CMD`
+- `CF_ACCOUNT_ID`
+- `CF_STREAM_TOKEN`
+- `CF_STREAM_CUSTOMER_CODE` (optional)
+
+Required GitHub **Variables**:
+- `VITE_STREAM_UPLOADS=true`
+- `CF_STREAM_MAX_DURATION_SEC=900` (optional, defaults to 900)
+
+The workflow will:
+1. Build the web app with `VITE_STREAM_UPLOADS`.
+2. Deploy `dist/` to `WEB_DEPLOY_PATH` on Hostinger.
+3. Upsert Cloudflare Stream env vars in backend `.env`.
+4. Restart backend using `BACKEND_RESTART_CMD`.

@@ -11,6 +11,9 @@ const CAMERA_UPLOAD_ICON = '/icons/upload-camera.png';
 const TITLE_MAX_LENGTH = 200;
 const DESCRIPTION_MAX_LENGTH = 1000;
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const USE_CLOUDFLARE_STREAM_UPLOAD = String(import.meta.env.VITE_STREAM_UPLOADS || '').toLowerCase() === 'true';
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 interface Props {
   onNav: (page: string) => void;
@@ -95,13 +98,76 @@ export default function Upload({ onNav, openToken }: Props) {
     if (uploadInProgress) return;
 
     toast('Uploading...');
+    setUploadStatus(true, 0);
+
+    if (USE_CLOUDFLARE_STREAM_UPLOAD) {
+      const prep = await apiFetch<{
+        video_id: string;
+        upload_url: string;
+      }>('/videos/stream/direct-upload-url', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: cleanTitle,
+          description: cleanDescription,
+          talent_type: category,
+          original_name: selectedFile.name,
+          file_size: selectedFile.size,
+        }),
+      });
+
+      if (!prep.success || !prep.data?.upload_url || !prep.data?.video_id) {
+        setUploadStatus(false, 0);
+        toast('Error: ' + (prep.error || 'Could not create Cloudflare upload URL'));
+        return;
+      }
+
+      const direct = await uploadToDirectUrlWithProgress(
+        prep.data.upload_url,
+        selectedFile,
+        (value) => setUploadStatus(true, value),
+      );
+
+      if (!direct.success) {
+        setUploadStatus(false, 0);
+        toast('Error: ' + direct.error);
+        return;
+      }
+
+      let ready = false;
+      for (let i = 0; i < 10; i += 1) {
+        const done = await apiFetch<{ ready_to_stream?: boolean }>('/videos/stream/complete', {
+          method: 'POST',
+          body: JSON.stringify({
+            video_id: prep.data.video_id,
+            publish: true,
+          }),
+        });
+
+        if (!done.success) break;
+        if (done.data?.ready_to_stream) {
+          ready = true;
+          break;
+        }
+        await wait(1500);
+      }
+
+      setUploadStatus(true, 100);
+      await wait(180);
+      resetPostDraft();
+      setShowPostForm(false);
+      onNav('upload');
+      toast(ready ? 'Video posted!' : 'Uploaded. Video is processing...');
+      loadMyVideos();
+      setUploadStatus(false, 0);
+      return;
+    }
+
     const form = new FormData();
     form.append('video', selectedFile);
     form.append('title', cleanTitle);
     form.append('description', cleanDescription);
     form.append('talent_type', category);
 
-    setUploadStatus(true, 0);
     const data = await uploadVideoWithProgress(form, (value) => setUploadStatus(true, value));
     if (!data.success) {
       setUploadStatus(false, 0);
@@ -110,14 +176,43 @@ export default function Upload({ onNav, openToken }: Props) {
     }
 
     setUploadStatus(true, 100);
-    await new Promise((resolve) => setTimeout(resolve, 180));
-
+    await wait(180);
     resetPostDraft();
     setShowPostForm(false);
     onNav('upload');
     toast('Video posted!');
     loadMyVideos();
     setUploadStatus(false, 0);
+  };
+
+  const uploadToDirectUrlWithProgress = (
+    uploadUrl: string,
+    file: File,
+    onProgress: (value: number) => void,
+  ): Promise<{ success: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', uploadUrl);
+      if (file.type) xhr.setRequestHeader('Content-Type', file.type);
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+        onProgress(pct);
+      };
+
+      xhr.onerror = () => resolve({ success: false, error: 'Cannot reach Cloudflare upload endpoint' });
+      xhr.onabort = () => resolve({ success: false, error: 'Upload cancelled' });
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ success: true });
+          return;
+        }
+        resolve({ success: false, error: 'Direct upload failed: HTTP ' + xhr.status });
+      };
+
+      xhr.send(file);
+    });
   };
 
   const uploadVideoWithProgress = (
