@@ -197,11 +197,75 @@ export default function Upload({ onNav, openToken }: Props) {
     }
   };
 
+  const uploadBinaryViaXhr = (
+    method: 'PUT' | 'POST',
+    targetUrl: string,
+    file: File,
+    onProgress: (value: number) => void,
+  ): Promise<{ success: boolean; status?: number; error?: string }> => {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(method, targetUrl);
+      if (file.type) xhr.setRequestHeader('Content-Type', file.type);
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+        onProgress(pct);
+      };
+
+      xhr.onerror = () => resolve({ success: false, error: 'Cannot reach Cloudflare upload endpoint' });
+      xhr.onabort = () => resolve({ success: false, error: 'Upload cancelled' });
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          onProgress(100);
+          resolve({ success: true, status: xhr.status });
+          return;
+        }
+        resolve({ success: false, status: xhr.status, error: `Direct upload failed: HTTP ${xhr.status}` });
+      };
+
+      xhr.send(file);
+    });
+  };
+
+  const uploadMultipartViaPost = (
+    targetUrl: string,
+    file: File,
+    onProgress: (value: number) => void,
+  ): Promise<{ success: boolean; status?: number; error?: string }> => {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', targetUrl);
+      const form = new FormData();
+      form.append('file', file, file.name || 'upload.mp4');
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+        onProgress(pct);
+      };
+
+      xhr.onerror = () => resolve({ success: false, error: 'Cannot reach Cloudflare upload endpoint' });
+      xhr.onabort = () => resolve({ success: false, error: 'Upload cancelled' });
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          onProgress(100);
+          resolve({ success: true, status: xhr.status });
+          return;
+        }
+        resolve({ success: false, status: xhr.status, error: `Direct upload failed: HTTP ${xhr.status}` });
+      };
+
+      xhr.send(form);
+    });
+  };
+
   const uploadTusPatch = (
     targetUrl: string,
     file: File,
     onProgress: (value: number) => void,
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; status?: number; error?: string }> => {
     return new Promise((resolve) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PATCH', targetUrl);
@@ -220,22 +284,30 @@ export default function Upload({ onNav, openToken }: Props) {
       xhr.onload = () => {
         if (xhr.status === 200 || xhr.status === 201 || xhr.status === 204) {
           onProgress(100);
-          resolve({ success: true });
+          resolve({ success: true, status: xhr.status });
           return;
         }
-        resolve({ success: false, error: 'Direct upload failed: HTTP ' + xhr.status });
+        resolve({ success: false, status: xhr.status, error: 'Direct upload failed: HTTP ' + xhr.status });
       };
 
       xhr.send(file);
     });
   };
 
-  const uploadToDirectUrlWithProgress = (
+  const uploadToDirectUrlWithProgress = async (
     uploadUrl: string,
     file: File,
     onProgress: (value: number) => void,
   ): Promise<{ success: boolean; error?: string }> => {
-    // Cloudflare Stream direct upload URL uses TUS protocol.
+    // Try protocol variants because Stream direct upload behavior can differ by account configuration.
+    // Order: PUT binary -> POST multipart -> TUS.
+    const putResult = await uploadBinaryViaXhr('PUT', uploadUrl, file, onProgress);
+    if (putResult.success) return { success: true };
+
+    const postMultipartResult = await uploadMultipartViaPost(uploadUrl, file, onProgress);
+    if (postMultipartResult.success) return { success: true };
+
+    // Final fallback: Cloudflare Stream direct upload URL using TUS protocol.
     return new Promise((resolve) => {
       const create = new XMLHttpRequest();
       create.open('POST', uploadUrl);
@@ -261,7 +333,11 @@ export default function Upload({ onNav, openToken }: Props) {
         }
         // Some deployments return an already-created TUS resource URL.
         const fallback = await uploadTusPatch(uploadUrl, file, onProgress);
-        resolve(fallback);
+        if (fallback.success) {
+          resolve({ success: true });
+          return;
+        }
+        resolve({ success: false, error: fallback.error || postMultipartResult.error || putResult.error || 'Direct upload failed' });
       };
 
       create.send();
