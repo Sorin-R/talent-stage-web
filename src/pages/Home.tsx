@@ -15,7 +15,6 @@ const SEARCH_ICON = '/icons/search.png';
 const MENU_ICON = '/icons/menu.png';
 const PLAY_OVERLAY_ICON = '/icons/play.png';
 const PAUSE_OVERLAY_ICON = '/icons/pause.png';
-const SLIDE_MS = 340; // kept for reference in non-momentum paths
 const MOMENTUM_SYNTHETIC_VELOCITY = 1.5; // px/ms for wheel/button triggers
 const TITLE_PREVIEW_CHARS = 35;
 const CREATOR_HANDLE_MAX = 20;
@@ -28,7 +27,6 @@ const DRAG_FRAME_CAPTURE_MIN_PX = 40;
 const DRAG_FRAME_CAPTURE_THROTTLE_MS = 66;
 const OVERLAY_FRAME_CACHE_LIMIT = 20;
 const OVERLAY_THUMB_CACHE_LIMIT = 40;
-const IOS_OVERLAY_MIN_REVEAL_DELAY_MS = 90;
 const DEFAULT_SWIPE_LOCK_MS = 5000;
 const DEFAULT_SWIPE_LOCK_ENABLED = true;
 const DEFAULT_SWIPE_LOCK_VISIBLE = true;
@@ -1183,7 +1181,7 @@ export default function Home({ onNav }: Props) {
     onOffsetChange: (offset: number) => {
       setStripOffset(offset);
     },
-    onCommit: (direction: 'up' | 'down') => {
+    onCommit: () => {
       finalizeSwipe();
     },
     onSnapBack: () => {
