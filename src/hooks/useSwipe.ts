@@ -17,6 +17,7 @@ export function useSwipe(
   const ty0 = useRef(0);
   const tx0 = useRef(0);
   const dragActive = useRef(false);
+  const directionLockRef = useRef<'up' | 'down' | null>(null);
   const swipeThresholdRef = useRef(55);
 
   // ── Wheel support (desktop) ───────────────────────────────────────────
@@ -66,9 +67,10 @@ export function useSwipe(
     if (isAnimating) return;
     ty0.current = e.touches[0].clientY;
     tx0.current = e.touches[0].clientX;
+    directionLockRef.current = null;
     const h = (e.currentTarget as HTMLElement | null)?.clientHeight || window.innerHeight || 0;
-    // Commit only after crossing 2vh of the feed height; otherwise snap back.
-    swipeThresholdRef.current = Math.max(1, Math.floor(h * 0.02));
+    // Reduce accidental direction flips by requiring a more deliberate swipe distance.
+    swipeThresholdRef.current = Math.max(28, Math.floor(h * 0.08));
     dragActive.current = true;
     e.preventDefault();
   }, [isAnimating]);
@@ -76,15 +78,31 @@ export function useSwipe(
   const onTouchMove = useCallback((e: React.TouchEvent) => {
     if (!dragActive.current || isAnimating) return;
     const dy = e.touches[0].clientY - ty0.current;
-    onDragMove?.(dy);
+    const dx = e.touches[0].clientX - tx0.current;
+
+    if (!directionLockRef.current && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+      directionLockRef.current = dy < 0 ? 'up' : 'down';
+    }
+
+    let displayDy = dy;
+    if (directionLockRef.current === 'up') displayDy = Math.min(0, dy);
+    if (directionLockRef.current === 'down') displayDy = Math.max(0, dy);
+
+    onDragMove?.(displayDy);
     e.preventDefault();
   }, [isAnimating, onDragMove]);
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
     if (isAnimating) return;
     dragActive.current = false;
-    const dy = e.changedTouches[0].clientY - ty0.current;
+    const rawDy = e.changedTouches[0].clientY - ty0.current;
     const dx = e.changedTouches[0].clientX - tx0.current;
+    const dy = directionLockRef.current === 'up'
+      ? Math.min(0, rawDy)
+      : directionLockRef.current === 'down'
+        ? Math.max(0, rawDy)
+        : rawDy;
+    directionLockRef.current = null;
 
     // Ignore short or mostly-horizontal gestures.
     if (Math.abs(dy) < swipeThresholdRef.current || Math.abs(dy) < Math.abs(dx)) {
