@@ -8,7 +8,7 @@ const VELOCITY_DEAD = 0.05;           // px/ms — consider velocity dead below 
 const POSITION_DEAD = 0.25;           // fraction — snap back if below this when velocity dies
 const SPRING_STIFFNESS = 0.14;        // spring pull toward target
 const SPRING_DAMPING = 0.72;          // velocity damping in spring phase
-const OVERSHOOT_CLAMP = 1.08;        // max fraction of containerH allowed
+const OVERSHOOT_CLAMP = 1.0;         // keep motion inside one screen height to avoid end bounce
 
 interface MomentumConfig {
   containerH: number;
@@ -77,9 +77,22 @@ export function useMomentumScroll(config: MomentumConfig): MomentumAPI {
 
       if (target !== null) {
         // ── SETTLE PHASE: spring toward target ──
+        const prevOffset = offset;
         const delta = target - offset;
         velocity = velocity * SPRING_DAMPING + delta * SPRING_STIFFNESS;
         offset += velocity * (dt / 16); // normalize spring to ~60fps
+
+        // Do not cross target; crossing produces visible end-of-swipe "jump".
+        if (target < 0 && offset < target) {
+          offset = target;
+          velocity = 0;
+        } else if (target > 0 && offset > target) {
+          offset = target;
+          velocity = 0;
+        } else if (target === 0 && ((prevOffset < 0 && offset > 0) || (prevOffset > 0 && offset < 0))) {
+          offset = 0;
+          velocity = 0;
+        }
 
         // Check if settled
         if (Math.abs(offset - target) < 0.5 && Math.abs(velocity) < 0.05) {
