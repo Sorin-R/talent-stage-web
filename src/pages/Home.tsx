@@ -31,6 +31,7 @@ const DEFAULT_SWIPE_LOCK_MS = 5000;
 const DEFAULT_SWIPE_LOCK_ENABLED = true;
 const DEFAULT_SWIPE_LOCK_VISIBLE = false;
 const DEFAULT_SWIPE_LOCK_OPACITY = 0.75;
+const FEED_SEEN_STORAGE_PREFIX = 'ts_feed_seen_v1';
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -63,7 +64,7 @@ export default function Home({ onNav }: Props) {
     feedVideos, setFeedVideos, feedIndex, setFeedIndex,
     currentVideo, setCurrentVideo, feedMuted, toggleMute,
     feedCat, setFeedCat, feedCreatorContext, setFeedCreatorContext, feedSavedContext, setFeedSavedContext, cmtsOpen, setCmtsOpen,
-    setDrawerOpen, loggedIn,
+    setDrawerOpen, loggedIn, user,
   } = useAppStore();
 
   const [catOpen, setCatOpen] = useState(false);
@@ -138,6 +139,40 @@ export default function Home({ onNav }: Props) {
   const completionSentRef = useRef<boolean>(false);
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
   const momentumRef = useRef<{ startMomentum: (offset: number, velocity: number) => void; cancel: () => void } | null>(null);
+  const seenScopeKeyRef = useRef('');
+  const seenVideoIdsRef = useRef<Set<string>>(new Set());
+
+  const buildFeedScopeKey = useCallback((talentType: string, search: string) => {
+    const viewer = (user?.id || 'anon').trim() || 'anon';
+    const category = (talentType || '').trim().toLowerCase() || 'all';
+    const query = (search || '').trim().toLowerCase() || '-';
+    return `${FEED_SEEN_STORAGE_PREFIX}:${viewer}:${category}:${query}`;
+  }, [user?.id]);
+
+  const loadSeenVideoIds = useCallback((scopeKey: string, allowedIds: Set<string>) => {
+    try {
+      const raw = localStorage.getItem(scopeKey);
+      if (!raw) return new Set<string>();
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return new Set<string>();
+      const seen = new Set<string>();
+      for (const item of parsed) {
+        if (typeof item !== 'string') continue;
+        if (allowedIds.has(item)) seen.add(item);
+      }
+      return seen;
+    } catch {
+      return new Set<string>();
+    }
+  }, []);
+
+  const persistSeenVideoIds = useCallback((scopeKey: string, seenIds: Set<string>) => {
+    try {
+      localStorage.setItem(scopeKey, JSON.stringify(Array.from(seenIds)));
+    } catch {
+      // ignore storage failures
+    }
+  }, []);
 
   const getActiveRef = useCallback(() =>
     activeSlot.current === 'A' ? videoRefA : videoRefB, []);
@@ -349,7 +384,19 @@ export default function Home({ onNav }: Props) {
       toast('Could not load feed');
       return false;
     }
-    const items = data.data.items || [];
+    const rawItems = data.data.items || [];
+    const categoryFilter = (talentType || '').trim().toLowerCase();
+    const items = categoryFilter
+      ? rawItems.filter((v) => (v.talent_type || '').trim().toLowerCase() === categoryFilter)
+      : rawItems;
+
+    const scopeKey = buildFeedScopeKey(talentType, search);
+    const allowedIds = new Set(items.map((v) => v.id));
+    const seenInScope = loadSeenVideoIds(scopeKey, allowedIds);
+    seenScopeKeyRef.current = scopeKey;
+    seenVideoIdsRef.current = seenInScope;
+    persistSeenVideoIds(scopeKey, seenInScope);
+
     failedVideos.current.clear();
     preloadedVideoId.current = null;
     pendingSwipeRef.current = null;
@@ -367,9 +414,18 @@ export default function Home({ onNav }: Props) {
     }
     preloadWindowRef.current.clear();
     setFeedVideos(items);
-    setFeedIndex(0);
+
     if (items.length > 0) {
-      const first = items[0];
+      let startIdx = items.findIndex((v) => !seenInScope.has(v.id));
+      if (startIdx < 0) {
+        // Every video from this scope was already seen: start a new cycle.
+        seenInScope.clear();
+        persistSeenVideoIds(scopeKey, seenInScope);
+        startIdx = 0;
+      }
+
+      const first = items[startIdx];
+      setFeedIndex(startIdx);
       setCurrentVideo(first);
       // Prime and play first video immediately on initial app open (even for anonymous visitors).
       requestAnimationFrame(() => {
@@ -387,9 +443,21 @@ export default function Home({ onNav }: Props) {
       });
       return true;
     }
+    seenInScope.clear();
+    persistSeenVideoIds(scopeKey, seenInScope);
+    setFeedIndex(0);
     setCurrentVideo(null);
     return true;
-  }, [getActiveRef, safePlay, setFeedVideos, setFeedIndex, setCurrentVideo]);
+  }, [
+    buildFeedScopeKey,
+    getActiveRef,
+    loadSeenVideoIds,
+    persistSeenVideoIds,
+    safePlay,
+    setFeedVideos,
+    setFeedIndex,
+    setCurrentVideo,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -419,6 +487,16 @@ export default function Home({ onNav }: Props) {
     setActiveVideoReady(false);
     setActiveVideoErrored(false);
   }, [currentVideo?.id]);
+
+  useEffect(() => {
+    if (!currentVideo?.id) return;
+    const scopeKey = seenScopeKeyRef.current;
+    if (!scopeKey) return;
+    const seen = seenVideoIdsRef.current;
+    if (seen.has(currentVideo.id)) return;
+    seen.add(currentVideo.id);
+    persistSeenVideoIds(scopeKey, seen);
+  }, [currentVideo?.id, persistSeenVideoIds]);
 
   useEffect(() => {
     // If auth state changes and feed is still empty, retry loading once.
@@ -679,12 +757,37 @@ export default function Home({ onNav }: Props) {
   // ── Next-playable index ──────────────────────────────────────────────────
   const getNextPlayableIndex = useCallback((): number | null => {
     if (feedVideos.length === 0) return null;
+
+    const seen = seenVideoIdsRef.current;
+    let fallbackIdx: number | null = null;
+
+    // Pass 1: find next unseen playable video.
     for (let i = 1; i <= feedVideos.length; i++) {
       const idx = (feedIndex + i) % feedVideos.length;
-      if (!failedVideos.current.has(feedVideos[idx].id)) return idx;
+      const candidate = feedVideos[idx];
+      if (!candidate || failedVideos.current.has(candidate.id)) continue;
+      if (fallbackIdx === null) fallbackIdx = idx;
+      if (!seen.has(candidate.id)) return idx;
     }
-    return null;
-  }, [feedVideos, feedIndex]);
+
+    // Nothing playable.
+    if (fallbackIdx === null) return null;
+
+    // All playable videos were already seen in this scope: start a new cycle.
+    seen.clear();
+    if (currentVideo?.id) seen.add(currentVideo.id); // avoid immediate repeat of current
+    const scopeKey = seenScopeKeyRef.current;
+    if (scopeKey) persistSeenVideoIds(scopeKey, seen);
+
+    for (let i = 1; i <= feedVideos.length; i++) {
+      const idx = (feedIndex + i) % feedVideos.length;
+      const candidate = feedVideos[idx];
+      if (!candidate || failedVideos.current.has(candidate.id)) continue;
+      if (!seen.has(candidate.id)) return idx;
+    }
+
+    return fallbackIdx;
+  }, [currentVideo?.id, feedVideos, feedIndex, persistSeenVideoIds]);
 
   const getPlayableIndexByOffset = useCallback((offset: number): number | null => {
     if (feedVideos.length === 0) return null;
