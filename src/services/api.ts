@@ -1,6 +1,6 @@
 import type { ApiResponse } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://api.web-demo.space/api';
 export const MAINTENANCE_EVENT = 'ts:maintenance-mode';
 const LOCALHOST_URL_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?/i;
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
