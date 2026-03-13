@@ -42,6 +42,8 @@ const DEFAULTS = {
   deepseekTimeoutMs: Number(process.env.SEED_DEEPSEEK_TIMEOUT_MS || 20000),
   runStamp: process.env.SEED_RUN_STAMP || '',
   streamUploads: String(process.env.SEED_STREAM_UPLOADS || '').toLowerCase() === 'true',
+  streamCompleteAttempts: Number(process.env.SEED_STREAM_COMPLETE_ATTEMPTS || 20),
+  streamCompleteDelayMs: Number(process.env.SEED_STREAM_COMPLETE_DELAY_MS || 1500),
 };
 
 function parseArgs(argv) {
@@ -51,6 +53,8 @@ function parseArgs(argv) {
     help: false,
     loginOnly: false,
     streamUploads: DEFAULTS.streamUploads,
+    streamCompleteAttempts: DEFAULTS.streamCompleteAttempts,
+    streamCompleteDelayMs: DEFAULTS.streamCompleteDelayMs,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -73,6 +77,8 @@ function parseArgs(argv) {
     else if (a === '--run-stamp') out.runStamp = argv[++i];
     else if (a === '--login-only') out.loginOnly = true;
     else if (a === '--stream') out.streamUploads = true;
+    else if (a === '--stream-complete-attempts') out.streamCompleteAttempts = Number(argv[++i]);
+    else if (a === '--stream-complete-delay-ms') out.streamCompleteDelayMs = Number(argv[++i]);
     // Backward compatibility aliases (deprecated)
     else if (a === '--openai-api-key') out.deepseekApiKey = argv[++i];
     else if (a === '--openai-model') out.deepseekModel = argv[++i];
@@ -106,6 +112,8 @@ Options:
   --run-stamp <stamp>      Reuse existing seed usernames for this run stamp (example: 202603051557)
   --login-only             Login existing users only (do not create users)
   --stream                 Upload videos via Cloudflare Stream direct-upload endpoints
+  --stream-complete-attempts <n> Poll attempts for /videos/stream/complete (default: ${DEFAULTS.streamCompleteAttempts})
+  --stream-complete-delay-ms <n> Delay between complete polls in ms (default: ${DEFAULTS.streamCompleteDelayMs})
   --openai-*               Backward-compatible aliases for deepseek flags
   --dry-run                Validate inputs and show plan only
   --help                   Show this help
@@ -582,6 +590,8 @@ async function uploadOneVideoViaStream({
   talent_type,
   filePath,
   timeoutMs,
+  completeAttempts,
+  completeDelayMs,
 }) {
   const mime = getMimeTypeForVideo(filePath);
   const blob = await fileToBlob(filePath, mime);
@@ -615,19 +625,47 @@ async function uploadOneVideoViaStream({
   if (!uploaded.ok) uploaded = await uploadTus(uploadUrl, blob, filePath, mime, timeoutMs);
   if (!uploaded.ok) return uploaded;
 
-  const complete = await fetchJson(`${apiBase}/videos/stream/complete`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  let lastComplete = null;
+  const attempts = Math.max(1, Number(completeAttempts || 1));
+  const delayMs = Math.max(0, Number(completeDelayMs || 0));
+  for (let i = 0; i < attempts; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const complete = await fetchJson(`${apiBase}/videos/stream/complete`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        video_id: videoId,
+        publish: true,
+      }),
+      timeoutMs,
+    });
+    lastComplete = complete;
+    if (!complete.ok) return complete;
+
+    const ready =
+      complete.data?.data?.ready_to_stream === true
+      || complete.data?.data?.is_public === true
+      || complete.data?.data?.status === 'ready';
+    if (ready) return complete;
+
+    if (i < attempts - 1 && delayMs > 0) {
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(delayMs);
+    }
+  }
+
+  return {
+    ok: false,
+    status: 408,
+    data: {
+      error: `Stream upload completed but not ready after ${attempts} checks`,
+      last_complete_response: lastComplete?.data || null,
       video_id: videoId,
-      publish: true,
-    }),
-    timeoutMs,
-  });
-  return complete;
+    },
+  };
 }
 
 async function main() {
@@ -644,6 +682,12 @@ async function main() {
   if (!Number.isFinite(args.delayMs) || args.delayMs < 0) throw new Error('--delay-ms must be >= 0');
   if (!Number.isFinite(args.uploadTimeoutMs) || args.uploadTimeoutMs <= 0) {
     throw new Error('--upload-timeout-ms must be > 0');
+  }
+  if (!Number.isFinite(args.streamCompleteAttempts) || args.streamCompleteAttempts <= 0) {
+    throw new Error('--stream-complete-attempts must be > 0');
+  }
+  if (!Number.isFinite(args.streamCompleteDelayMs) || args.streamCompleteDelayMs < 0) {
+    throw new Error('--stream-complete-delay-ms must be >= 0');
   }
   if (!Number.isFinite(args.deepseekTimeoutMs) || args.deepseekTimeoutMs <= 0) {
     throw new Error('--deepseek-timeout-ms must be > 0');
@@ -686,6 +730,9 @@ async function main() {
   console.log(`- Run stamp:     ${runStamp}`);
   console.log(`- Users mode:    ${args.loginOnly ? 'login-only (reuse existing)' : 'create-or-reuse'}`);
   console.log(`- Upload mode:   ${args.streamUploads ? 'cloudflare-stream' : 'api-multipart'}`);
+  if (args.streamUploads) {
+    console.log(`- Stream checks: ${args.streamCompleteAttempts} attempts x ${args.streamCompleteDelayMs}ms`);
+  }
   console.log(`- Delay:         ${args.delayMs} ms`);
   console.log(`- Timeout:       ${args.uploadTimeoutMs} ms/upload`);
 
@@ -766,6 +813,8 @@ async function main() {
           talent_type: user.talent_type,
           filePath: videoPath,
           timeoutMs: args.uploadTimeoutMs,
+          completeAttempts: args.streamCompleteAttempts,
+          completeDelayMs: args.streamCompleteDelayMs,
         });
       } else {
         res = await uploadOneVideo({
