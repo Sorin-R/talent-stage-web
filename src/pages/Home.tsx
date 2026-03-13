@@ -442,7 +442,18 @@ export default function Home({ onNav }: Props) {
     setFeedVideos(items);
 
     if (items.length > 0) {
-      let startIdx = items.findIndex((v) => !seenInScope.has(v.id));
+      const followedUnseen = items
+        .map((video, idx) => ({ video, idx }))
+        .filter(({ video }) => Number(video.is_following_author) === 1 && !seenInScope.has(video.id))
+        .sort((a, b) => {
+          const at = new Date(a.video.created_at || '').getTime() || 0;
+          const bt = new Date(b.video.created_at || '').getTime() || 0;
+          return bt - at;
+        });
+
+      let startIdx = followedUnseen.length > 0
+        ? followedUnseen[0].idx
+        : items.findIndex((v) => !seenInScope.has(v.id));
       if (startIdx < 0) {
         // Every video from this scope was already seen: start a new cycle.
         seenInScope.clear();
