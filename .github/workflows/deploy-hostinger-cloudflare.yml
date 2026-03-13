@@ -37,9 +37,11 @@ jobs:
       - name: Build web app
         env:
           VITE_STREAM_UPLOADS: ${{ vars.VITE_STREAM_UPLOADS }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
         run: |
           set -euo pipefail
           export VITE_STREAM_UPLOADS="${VITE_STREAM_UPLOADS:-true}"
+          export VITE_API_URL="${VITE_API_URL:-https://api.web-demo.space/api}"
           npm run build
 
       - name: Setup SSH key
