@@ -10,7 +10,7 @@ const GALLERY_UPLOAD_ICON = '/icons/upload-gallery.png';
 const CAMERA_UPLOAD_ICON = '/icons/upload-camera.png';
 const TITLE_MAX_LENGTH = 200;
 const DESCRIPTION_MAX_LENGTH = 1000;
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://api.web-demo.space/api';
 const USE_CLOUDFLARE_STREAM_UPLOAD = String(import.meta.env.VITE_STREAM_UPLOADS || '').toLowerCase() === 'true';
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -185,15 +185,29 @@ export default function Upload({ onNav, openToken }: Props) {
     setUploadStatus(false, 0);
   };
 
-  const uploadToDirectUrlWithProgress = (
-    uploadUrl: string,
+  const encodeTusMetadata = (key: string, value: string): string => {
+    return `${key} ${btoa(unescape(encodeURIComponent(value)))}`;
+  };
+
+  const resolveTusLocation = (baseUrl: string, location: string): string => {
+    try {
+      return new URL(location, baseUrl).toString();
+    } catch {
+      return location;
+    }
+  };
+
+  const uploadTusPatch = (
+    targetUrl: string,
     file: File,
     onProgress: (value: number) => void,
   ): Promise<{ success: boolean; error?: string }> => {
     return new Promise((resolve) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', uploadUrl);
-      if (file.type) xhr.setRequestHeader('Content-Type', file.type);
+      xhr.open('PATCH', targetUrl);
+      xhr.setRequestHeader('Tus-Resumable', '1.0.0');
+      xhr.setRequestHeader('Upload-Offset', '0');
+      xhr.setRequestHeader('Content-Type', 'application/offset+octet-stream');
 
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable) return;
@@ -204,7 +218,8 @@ export default function Upload({ onNav, openToken }: Props) {
       xhr.onerror = () => resolve({ success: false, error: 'Cannot reach Cloudflare upload endpoint' });
       xhr.onabort = () => resolve({ success: false, error: 'Upload cancelled' });
       xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
+        if (xhr.status === 200 || xhr.status === 201 || xhr.status === 204) {
+          onProgress(100);
           resolve({ success: true });
           return;
         }
@@ -212,6 +227,44 @@ export default function Upload({ onNav, openToken }: Props) {
       };
 
       xhr.send(file);
+    });
+  };
+
+  const uploadToDirectUrlWithProgress = (
+    uploadUrl: string,
+    file: File,
+    onProgress: (value: number) => void,
+  ): Promise<{ success: boolean; error?: string }> => {
+    // Cloudflare Stream direct upload URL uses TUS protocol.
+    return new Promise((resolve) => {
+      const create = new XMLHttpRequest();
+      create.open('POST', uploadUrl);
+      create.setRequestHeader('Tus-Resumable', '1.0.0');
+      create.setRequestHeader('Upload-Length', String(file.size));
+      create.setRequestHeader(
+        'Upload-Metadata',
+        [
+          encodeTusMetadata('filename', file.name || 'upload.mp4'),
+          encodeTusMetadata('filetype', file.type || 'application/octet-stream'),
+        ].join(','),
+      );
+
+      create.onerror = () => resolve({ success: false, error: 'Cannot initialize Cloudflare direct upload' });
+      create.onabort = () => resolve({ success: false, error: 'Upload cancelled' });
+      create.onload = async () => {
+        if (create.status === 201 || create.status === 204) {
+          const location = create.getResponseHeader('Location');
+          const patchUrl = resolveTusLocation(uploadUrl, location || uploadUrl);
+          const result = await uploadTusPatch(patchUrl, file, onProgress);
+          resolve(result);
+          return;
+        }
+        // Some deployments return an already-created TUS resource URL.
+        const fallback = await uploadTusPatch(uploadUrl, file, onProgress);
+        resolve(fallback);
+      };
+
+      create.send();
     });
   };
 
