@@ -31,7 +31,6 @@ const DEFAULT_SWIPE_LOCK_MS = 5000;
 const DEFAULT_SWIPE_LOCK_ENABLED = true;
 const DEFAULT_SWIPE_LOCK_VISIBLE = true;
 const DEFAULT_SWIPE_LOCK_OPACITY = 0.75;
-const MIN_EFFECTIVE_SWIPE_LOCK_MS = 1000;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -46,10 +45,10 @@ interface PendingSwipe {
 }
 
 interface FeedRuntimeConfig {
-  swipe_timer_enabled?: boolean;
+  swipe_timer_enabled?: boolean | number | string;
   swipe_timer_ms?: number;
   swipe_timer_seconds?: number;
-  swipe_timer_visible?: boolean;
+  swipe_timer_visible?: boolean | number | string;
   swipe_timer_opacity?: number;
 }
 
@@ -507,8 +506,19 @@ export default function Home({ onNav }: Props) {
       const data = await apiFetch<FeedRuntimeConfig>('/feed-config');
       if (cancelled || !data.success || !data.data) return;
 
-      const enabled = data.data.swipe_timer_enabled;
-      if (typeof enabled === 'boolean') setSwipeTimerEnabled(enabled);
+      const toBool = (value: unknown): boolean | null => {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value === 1;
+        if (typeof value === 'string') {
+          const normalized = value.trim().toLowerCase();
+          if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') return true;
+          if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') return false;
+        }
+        return null;
+      };
+
+      const enabled = toBool(data.data.swipe_timer_enabled);
+      if (enabled !== null) setSwipeTimerEnabled(enabled);
 
       const rawMs = Number(data.data.swipe_timer_ms);
       if (Number.isFinite(rawMs)) {
@@ -522,8 +532,8 @@ export default function Home({ onNav }: Props) {
         }
       }
 
-      const visible = data.data.swipe_timer_visible;
-      if (typeof visible === 'boolean') setSwipeTimerVisible(visible);
+      const visible = toBool(data.data.swipe_timer_visible);
+      if (visible !== null) setSwipeTimerVisible(visible);
 
       const rawOpacity = Number(data.data.swipe_timer_opacity);
       if (Number.isFinite(rawOpacity)) {
@@ -548,7 +558,7 @@ export default function Home({ onNav }: Props) {
       return;
     }
 
-    if (!swipeTimerEnabled || swipeTimerMs < MIN_EFFECTIVE_SWIPE_LOCK_MS) {
+    if (!swipeTimerEnabled || swipeTimerMs <= 0) {
       swipeLockUntilRef.current = 0;
       setSwipeCountdown(0);
       return;
