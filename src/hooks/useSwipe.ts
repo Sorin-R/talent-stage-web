@@ -4,6 +4,7 @@ interface SwipeHandlers {
   onTouchStart: (e: React.TouchEvent) => void;
   onTouchMove: (e: React.TouchEvent) => void;
   onTouchEnd: (e: React.TouchEvent) => void;
+  onTouchCancel: (e: React.TouchEvent) => void;
 }
 
 export function useSwipe(
@@ -93,8 +94,12 @@ export function useSwipe(
   }, [isAnimating, onDragMove]);
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (isAnimating) return;
     dragActive.current = false;
+    if (isAnimating) {
+      directionLockRef.current = null;
+      onGestureEnd?.(false);
+      return;
+    }
     const rawDy = e.changedTouches[0].clientY - ty0.current;
     const dx = e.changedTouches[0].clientX - tx0.current;
     const dy = directionLockRef.current === 'up'
@@ -115,5 +120,12 @@ export function useSwipe(
     else onSwipeDown();
   }, [isAnimating, onSwipeUp, onSwipeDown, onGestureEnd]);
 
-  return { onTouchStart, onTouchMove, onTouchEnd };
+  const onTouchCancel = useCallback((e: React.TouchEvent) => {
+    void e;
+    dragActive.current = false;
+    directionLockRef.current = null;
+    onGestureEnd?.(false);
+  }, [onGestureEnd]);
+
+  return { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel };
 }

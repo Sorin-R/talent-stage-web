@@ -1380,8 +1380,7 @@ export default function Home({ onNav }: Props) {
     if (!waitEl) {
       pendingSwipeRef.current = null;
       setIsAnimating(false);
-      pausedByScrollRef.current = false;
-      resetOverlaySwipeState();
+      clearStrip();
       return;
     }
 
@@ -1407,7 +1406,7 @@ export default function Home({ onNav }: Props) {
       }
       pendingSwipeRef.current = null;
       setIsAnimating(false);
-      pausedByScrollRef.current = false;
+      clearStrip();
       failedVideos.current.add(nextVideo.id);
       skipToNextPlayable();
     };
@@ -1424,7 +1423,7 @@ export default function Home({ onNav }: Props) {
       }
       pendingSwipeRef.current = null;
       setIsAnimating(false);
-      pausedByScrollRef.current = false;
+      clearStrip();
       failedVideos.current.add(nextVideo.id);
       skipToNextPlayable();
     }, 3000);
@@ -1433,6 +1432,7 @@ export default function Home({ onNav }: Props) {
     getNextPlayableIndex, getPlaybackMetrics, isIOSDevice, loggedIn, swipeCountdown,
     primeInactive, resetOverlaySwipeState, setFeedVideos, skipToNextPlayable, trackVideoSignal,
     captureActiveFrame, forceOverlayMode, getActiveRef, getOverlayImageForVideo, isOverlayImageReady, settlePreloadedVideo,
+    clearStrip,
   ]);
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
@@ -1448,7 +1448,7 @@ export default function Home({ onNav }: Props) {
 
   const swipeInteractionBlocked = isAnimating || swipeCountdown > 0;
 
-  const { onTouchStart, onTouchMove, onTouchEnd } = useSwipe(
+  const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useSwipe(
     () => goNext('like'),
     () => goNext('dislike'),
     swipeInteractionBlocked,
@@ -1912,6 +1912,7 @@ export default function Home({ onNav }: Props) {
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchCancel}
         onWheel={onWheel}
       >
         <ReactionOverlay type={reaction} key={reactionKey.current} />
