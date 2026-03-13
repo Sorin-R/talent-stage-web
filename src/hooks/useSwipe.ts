@@ -20,6 +20,58 @@ export function useSwipe(
   const dragActive = useRef(false);
   const directionLockRef = useRef<'up' | 'down' | null>(null);
   const swipeThresholdRef = useRef(55);
+  const touchTrackingCleanupRef = useRef<(() => void) | null>(null);
+
+  const stopTouchTracking = useCallback(() => {
+    if (touchTrackingCleanupRef.current) {
+      touchTrackingCleanupRef.current();
+      touchTrackingCleanupRef.current = null;
+    }
+  }, []);
+
+  const handleMoveByCoords = useCallback((clientY: number, clientX: number) => {
+    if (!dragActive.current || isAnimating) return;
+    const dy = clientY - ty0.current;
+    const dx = clientX - tx0.current;
+
+    if (!directionLockRef.current && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+      directionLockRef.current = dy < 0 ? 'up' : 'down';
+    }
+
+    let displayDy = dy;
+    if (directionLockRef.current === 'up') displayDy = Math.min(0, dy);
+    if (directionLockRef.current === 'down') displayDy = Math.max(0, dy);
+
+    onDragMove?.(displayDy);
+  }, [isAnimating, onDragMove]);
+
+  const handleEndByCoords = useCallback((clientY: number, clientX: number, canceled = false) => {
+    dragActive.current = false;
+    if (canceled || isAnimating) {
+      directionLockRef.current = null;
+      onGestureEnd?.(false);
+      return;
+    }
+
+    const rawDy = clientY - ty0.current;
+    const dx = clientX - tx0.current;
+    const dy = directionLockRef.current === 'up'
+      ? Math.min(0, rawDy)
+      : directionLockRef.current === 'down'
+        ? Math.max(0, rawDy)
+        : rawDy;
+    directionLockRef.current = null;
+
+    // Ignore short or mostly-horizontal gestures.
+    if (Math.abs(dy) < swipeThresholdRef.current || Math.abs(dy) < Math.abs(dx)) {
+      onGestureEnd?.(false);
+      return;
+    }
+
+    onGestureEnd?.(true);
+    if (dy < 0) onSwipeUp();
+    else onSwipeDown();
+  }, [isAnimating, onGestureEnd, onSwipeDown, onSwipeUp]);
 
   // ── Wheel support (desktop) ───────────────────────────────────────────
   const wheelAccum = useRef(0);
@@ -66,66 +118,80 @@ export function useSwipe(
   // ── Touch handlers (unchanged) ────────────────────────────────────────
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     if (isAnimating) return;
+    stopTouchTracking();
     ty0.current = e.touches[0].clientY;
     tx0.current = e.touches[0].clientX;
     directionLockRef.current = null;
     const h = (e.currentTarget as HTMLElement | null)?.clientHeight || window.innerHeight || 0;
-    // Reduce accidental direction flips by requiring a more deliberate swipe distance.
-    swipeThresholdRef.current = Math.max(28, Math.floor(h * 0.08));
+    // Commit swipe after a short but intentional movement.
+    swipeThresholdRef.current = Math.max(35, Math.floor(h * 0.02));
     dragActive.current = true;
-    e.preventDefault();
-  }, [isAnimating]);
+    const doc = e.currentTarget.ownerDocument || document;
+
+    const onDocMove = (ev: TouchEvent) => {
+      if (!dragActive.current) return;
+      const t = ev.touches[0] || ev.changedTouches[0];
+      if (!t) return;
+      handleMoveByCoords(t.clientY, t.clientX);
+      if (ev.cancelable) ev.preventDefault();
+    };
+
+    const onDocEnd = (ev: TouchEvent) => {
+      const t = ev.changedTouches[0] || ev.touches[0];
+      handleEndByCoords(t ? t.clientY : ty0.current, t ? t.clientX : tx0.current, false);
+      stopTouchTracking();
+    };
+
+    const onDocCancel = (ev: TouchEvent) => {
+      const t = ev.changedTouches[0] || ev.touches[0];
+      handleEndByCoords(t ? t.clientY : ty0.current, t ? t.clientX : tx0.current, true);
+      stopTouchTracking();
+    };
+
+    doc.addEventListener('touchmove', onDocMove, { passive: false });
+    doc.addEventListener('touchend', onDocEnd, { passive: false });
+    doc.addEventListener('touchcancel', onDocCancel, { passive: false });
+    touchTrackingCleanupRef.current = () => {
+      doc.removeEventListener('touchmove', onDocMove);
+      doc.removeEventListener('touchend', onDocEnd);
+      doc.removeEventListener('touchcancel', onDocCancel);
+    };
+
+    if (e.cancelable) e.preventDefault();
+  }, [handleEndByCoords, handleMoveByCoords, isAnimating, stopTouchTracking]);
 
   const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!dragActive.current || isAnimating) return;
-    const dy = e.touches[0].clientY - ty0.current;
-    const dx = e.touches[0].clientX - tx0.current;
-
-    if (!directionLockRef.current && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
-      directionLockRef.current = dy < 0 ? 'up' : 'down';
-    }
-
-    let displayDy = dy;
-    if (directionLockRef.current === 'up') displayDy = Math.min(0, dy);
-    if (directionLockRef.current === 'down') displayDy = Math.max(0, dy);
-
-    onDragMove?.(displayDy);
-    e.preventDefault();
-  }, [isAnimating, onDragMove]);
+    if (!dragActive.current) return;
+    const t = e.touches[0];
+    if (!t) return;
+    handleMoveByCoords(t.clientY, t.clientX);
+    if (e.cancelable) e.preventDefault();
+  }, [handleMoveByCoords]);
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
-    dragActive.current = false;
-    if (isAnimating) {
-      directionLockRef.current = null;
-      onGestureEnd?.(false);
-      return;
-    }
-    const rawDy = e.changedTouches[0].clientY - ty0.current;
-    const dx = e.changedTouches[0].clientX - tx0.current;
-    const dy = directionLockRef.current === 'up'
-      ? Math.min(0, rawDy)
-      : directionLockRef.current === 'down'
-        ? Math.max(0, rawDy)
-        : rawDy;
-    directionLockRef.current = null;
-
-    // Ignore short or mostly-horizontal gestures.
-    if (Math.abs(dy) < swipeThresholdRef.current || Math.abs(dy) < Math.abs(dx)) {
-      onGestureEnd?.(false);
-      return;
-    }
-
-    onGestureEnd?.(true);
-    if (dy < 0) onSwipeUp();
-    else onSwipeDown();
-  }, [isAnimating, onSwipeUp, onSwipeDown, onGestureEnd]);
+    const t = e.changedTouches[0] || e.touches[0];
+    handleEndByCoords(t ? t.clientY : ty0.current, t ? t.clientX : tx0.current, false);
+    stopTouchTracking();
+  }, [handleEndByCoords, stopTouchTracking]);
 
   const onTouchCancel = useCallback((e: React.TouchEvent) => {
-    void e;
+    const t = e.changedTouches[0] || e.touches[0];
+    handleEndByCoords(t ? t.clientY : ty0.current, t ? t.clientX : tx0.current, true);
+    stopTouchTracking();
+  }, [handleEndByCoords, stopTouchTracking]);
+
+  useEffect(() => {
+    if (!isAnimating) return;
     dragActive.current = false;
     directionLockRef.current = null;
-    onGestureEnd?.(false);
-  }, [onGestureEnd]);
+    stopTouchTracking();
+  }, [isAnimating, stopTouchTracking]);
+
+  useEffect(() => () => {
+    dragActive.current = false;
+    directionLockRef.current = null;
+    stopTouchTracking();
+  }, [stopTouchTracking]);
 
   return { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel };
 }
