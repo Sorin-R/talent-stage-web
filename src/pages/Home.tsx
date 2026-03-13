@@ -32,6 +32,7 @@ const DEFAULT_SWIPE_LOCK_MS = 5000;
 const DEFAULT_SWIPE_LOCK_ENABLED = true;
 const DEFAULT_SWIPE_LOCK_VISIBLE = true;
 const DEFAULT_SWIPE_LOCK_OPACITY = 0.75;
+const MIN_EFFECTIVE_SWIPE_LOCK_MS = 1000;
 
 interface Props {
   onNav: (page: string, data?: unknown) => void;
@@ -549,7 +550,7 @@ export default function Home({ onNav }: Props) {
       return;
     }
 
-    if (!swipeTimerEnabled || swipeTimerMs <= 0) {
+    if (!swipeTimerEnabled || swipeTimerMs < MIN_EFFECTIVE_SWIPE_LOCK_MS) {
       swipeLockUntilRef.current = 0;
       setSwipeCountdown(0);
       return;
