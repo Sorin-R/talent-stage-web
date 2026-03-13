@@ -7,6 +7,13 @@ interface SwipeHandlers {
   onTouchCancel: (e: React.TouchEvent) => void;
 }
 
+interface VelocitySample {
+  y: number;
+  t: number;
+}
+
+const MAX_SAMPLES = 5;
+
 export function useSwipe(
   onSwipeUp: () => void,
   onSwipeDown: () => void,
@@ -14,13 +21,14 @@ export function useSwipe(
   onDragMove?: (dy: number) => void,
   onGestureEnd?: (didSwipe: boolean) => void,
   containerRef?: React.RefObject<HTMLDivElement | null>,
+  onRelease?: (dy: number, velocityPxPerMs: number) => void,
 ): SwipeHandlers {
   const ty0 = useRef(0);
   const tx0 = useRef(0);
   const dragActive = useRef(false);
-  const directionLockRef = useRef<'up' | 'down' | null>(null);
   const swipeThresholdRef = useRef(55);
   const touchTrackingCleanupRef = useRef<(() => void) | null>(null);
+  const velocitySamples = useRef<VelocitySample[]>([]);
 
   const stopTouchTracking = useCallback(() => {
     if (touchTrackingCleanupRef.current) {
@@ -29,41 +37,64 @@ export function useSwipe(
     }
   }, []);
 
+  const computeVelocity = useCallback((): number => {
+    const samples = velocitySamples.current;
+    if (samples.length < 2) return 0;
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+    const dt = last.t - first.t;
+    if (dt < 1) return 0;
+    return (last.y - first.y) / dt; // px/ms, negative = upward
+  }, []);
+
   const handleMoveByCoords = useCallback((clientY: number, clientX: number) => {
     if (!dragActive.current || isAnimating) return;
     const dy = clientY - ty0.current;
     const dx = clientX - tx0.current;
 
-    if (!directionLockRef.current && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
-      directionLockRef.current = dy < 0 ? 'up' : 'down';
-    }
+    // Dead zone: ignore until vertical movement exceeds horizontal
+    if (Math.abs(dy) < 10 || Math.abs(dy) < Math.abs(dx)) return;
 
-    let displayDy = dy;
-    if (directionLockRef.current === 'up') displayDy = Math.min(0, dy);
-    if (directionLockRef.current === 'down') displayDy = Math.max(0, dy);
+    // Record velocity sample
+    const now = performance.now();
+    const samples = velocitySamples.current;
+    samples.push({ y: clientY, t: now });
+    if (samples.length > MAX_SAMPLES) samples.shift();
 
-    onDragMove?.(displayDy);
+    onDragMove?.(dy);
   }, [isAnimating, onDragMove]);
 
   const handleEndByCoords = useCallback((clientY: number, clientX: number, canceled = false) => {
     dragActive.current = false;
     if (canceled || isAnimating) {
-      directionLockRef.current = null;
       onGestureEnd?.(false);
       return;
     }
 
-    const rawDy = clientY - ty0.current;
+    const dy = clientY - ty0.current;
     const dx = clientX - tx0.current;
-    const dy = directionLockRef.current === 'up'
-      ? Math.min(0, rawDy)
-      : directionLockRef.current === 'down'
-        ? Math.max(0, rawDy)
-        : rawDy;
-    directionLockRef.current = null;
 
-    // Ignore short or mostly-horizontal gestures.
-    if (Math.abs(dy) < swipeThresholdRef.current || Math.abs(dy) < Math.abs(dx)) {
+    // Ignore mostly-horizontal gestures
+    if (Math.abs(dy) < Math.abs(dx)) {
+      onGestureEnd?.(false);
+      return;
+    }
+
+    // If onRelease is provided, use momentum path
+    if (onRelease) {
+      const velocity = computeVelocity();
+      // Only trigger if there was meaningful vertical movement
+      if (Math.abs(dy) < swipeThresholdRef.current && Math.abs(velocity) < 0.15) {
+        onGestureEnd?.(false);
+        return;
+      }
+      onGestureEnd?.(true);
+      onRelease(dy, velocity);
+      return;
+    }
+
+    // Legacy discrete path (wheel fallback)
+    if (Math.abs(dy) < swipeThresholdRef.current) {
       onGestureEnd?.(false);
       return;
     }
@@ -71,7 +102,7 @@ export function useSwipe(
     onGestureEnd?.(true);
     if (dy < 0) onSwipeUp();
     else onSwipeDown();
-  }, [isAnimating, onGestureEnd, onSwipeDown, onSwipeUp]);
+  }, [isAnimating, onGestureEnd, onSwipeDown, onSwipeUp, onRelease, computeVelocity]);
 
   // ── Wheel support (desktop) ───────────────────────────────────────────
   const wheelAccum = useRef(0);
@@ -115,15 +146,14 @@ export function useSwipe(
     };
   }, [isAnimating, onSwipeUp, onSwipeDown, onDragMove, onGestureEnd, containerRef]);
 
-  // ── Touch handlers (unchanged) ────────────────────────────────────────
+  // ── Touch handlers ────────────────────────────────────────────────────
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     if (isAnimating) return;
     stopTouchTracking();
     ty0.current = e.touches[0].clientY;
     tx0.current = e.touches[0].clientX;
-    directionLockRef.current = null;
+    velocitySamples.current = [{ y: e.touches[0].clientY, t: performance.now() }];
     const h = (e.currentTarget as HTMLElement | null)?.clientHeight || window.innerHeight || 0;
-    // Commit swipe after a short but intentional movement.
     swipeThresholdRef.current = Math.max(35, Math.floor(h * 0.02));
     dragActive.current = true;
     const doc = e.currentTarget.ownerDocument || document;
@@ -183,13 +213,11 @@ export function useSwipe(
   useEffect(() => {
     if (!isAnimating) return;
     dragActive.current = false;
-    directionLockRef.current = null;
     stopTouchTracking();
   }, [isAnimating, stopTouchTracking]);
 
   useEffect(() => () => {
     dragActive.current = false;
-    directionLockRef.current = null;
     stopTouchTracking();
   }, [stopTouchTracking]);
 
