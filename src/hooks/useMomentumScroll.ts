@@ -66,8 +66,12 @@ export function useMomentumScroll(config: MomentumConfig): MomentumAPI {
         if (absVelocity > VELOCITY_COMMIT_THRESHOLD ||
             absOffset > containerH * POSITION_COMMIT_THRESHOLD) {
           target = offset < 0 ? -containerH : containerH;
-        } else if (absVelocity < VELOCITY_DEAD && absOffset < containerH * POSITION_DEAD) {
-          target = 0;
+        } else if (absVelocity < VELOCITY_DEAD) {
+          // Always resolve when momentum dies to avoid mid-screen dead zone.
+          // Small displacement snaps back; larger displacement commits.
+          target = absOffset >= containerH * POSITION_DEAD
+            ? (offset < 0 ? -containerH : containerH)
+            : 0;
         }
       }
 
