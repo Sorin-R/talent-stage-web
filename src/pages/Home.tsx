@@ -87,6 +87,8 @@ export default function Home({ onNav }: Props) {
   const [titleExpanded, setTitleExpanded] = useState(false);
   const [mainCommentText, setMainCommentText] = useState('');
   const [isPaused, setIsPaused] = useState(false);
+  const [activeVideoReady, setActiveVideoReady] = useState(false);
+  const [activeVideoErrored, setActiveVideoErrored] = useState(false);
   const [playbackIndicator, setPlaybackIndicator] = useState<'play' | 'pause' | null>(null);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [swipeCountdown, setSwipeCountdown] = useState(0);
@@ -412,6 +414,11 @@ export default function Home({ onNav }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setActiveVideoReady(false);
+    setActiveVideoErrored(false);
+  }, [currentVideo?.id]);
 
   useEffect(() => {
     // If auth state changes and feed is still empty, retry loading once.
@@ -1817,6 +1824,22 @@ export default function Home({ onNav }: Props) {
 
         {currentVideo ? (
           <>
+            {(!activeVideoReady || activeVideoErrored) && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundColor: '#000',
+                  backgroundImage: currentVideo.thumbnail_url ? `url(${currentVideo.thumbnail_url})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center center',
+                  filter: activeVideoErrored ? 'none' : 'blur(2px)',
+                  opacity: activeVideoErrored ? 0.95 : 0.5,
+                  zIndex: 0,
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
             {/*
               VIDEO BAND — one strip containing:
                 • above slot  (top: -h)  — next video when swiping DOWN
@@ -1841,12 +1864,16 @@ export default function Home({ onNav }: Props) {
                   if (!isActiveEl(e)) return;
                   const el = e.currentTarget;
                   if (!currentVideo || el.dataset.videoId !== currentVideo.id) return;
+                  setActiveVideoReady(true);
+                  setActiveVideoErrored(false);
                   if (el.paused) safePlay(el);
                 }}
                 onLoadedData={(e) => {
                   if (!isActiveEl(e)) return;
                   const el = e.currentTarget;
                   if (!currentVideo || el.dataset.videoId !== currentVideo.id) return;
+                  setActiveVideoReady(true);
+                  setActiveVideoErrored(false);
                   if (el.paused) safePlay(el);
                   captureActiveFrame();
                 }}
@@ -1854,6 +1881,8 @@ export default function Home({ onNav }: Props) {
                   if (!isActiveEl(e)) return;
                   const el = e.currentTarget;
                   if (!currentVideo || el.dataset.videoId !== currentVideo.id) return;
+                  setActiveVideoReady(true);
+                  setActiveVideoErrored(false);
                   if (el.paused) safePlay(el);
                   captureActiveFrame();
                 }}
@@ -1870,7 +1899,12 @@ export default function Home({ onNav }: Props) {
                 }}
                 onTimeUpdate={(e) => { if (isActiveEl(e)) onVideoTimeUpdate(); }}
                 onEnded={(e) => { if (isActiveEl(e)) onVideoEnded(); }}
-                onError={(e) => { if (isActiveEl(e)) onVideoError(); }}
+                onError={(e) => {
+                  if (!isActiveEl(e)) return;
+                  setActiveVideoReady(false);
+                  setActiveVideoErrored(true);
+                  onVideoError();
+                }}
                 onClick={(e) => { if (isActiveEl(e)) toggleVideoPlayback(); }}
               />
               <video
@@ -1885,12 +1919,16 @@ export default function Home({ onNav }: Props) {
                   if (!isActiveEl(e)) return;
                   const el = e.currentTarget;
                   if (!currentVideo || el.dataset.videoId !== currentVideo.id) return;
+                  setActiveVideoReady(true);
+                  setActiveVideoErrored(false);
                   if (el.paused) safePlay(el);
                 }}
                 onLoadedData={(e) => {
                   if (!isActiveEl(e)) return;
                   const el = e.currentTarget;
                   if (!currentVideo || el.dataset.videoId !== currentVideo.id) return;
+                  setActiveVideoReady(true);
+                  setActiveVideoErrored(false);
                   if (el.paused) safePlay(el);
                   captureActiveFrame();
                 }}
@@ -1898,6 +1936,8 @@ export default function Home({ onNav }: Props) {
                   if (!isActiveEl(e)) return;
                   const el = e.currentTarget;
                   if (!currentVideo || el.dataset.videoId !== currentVideo.id) return;
+                  setActiveVideoReady(true);
+                  setActiveVideoErrored(false);
                   if (el.paused) safePlay(el);
                   captureActiveFrame();
                 }}
@@ -1914,7 +1954,12 @@ export default function Home({ onNav }: Props) {
                 }}
                 onTimeUpdate={(e) => { if (isActiveEl(e)) onVideoTimeUpdate(); }}
                 onEnded={(e) => { if (isActiveEl(e)) onVideoEnded(); }}
-                onError={(e) => { if (isActiveEl(e)) onVideoError(); }}
+                onError={(e) => {
+                  if (!isActiveEl(e)) return;
+                  setActiveVideoReady(false);
+                  setActiveVideoErrored(true);
+                  onVideoError();
+                }}
                 onClick={(e) => { if (isActiveEl(e)) toggleVideoPlayback(); }}
               />
             </div>
@@ -1978,8 +2023,17 @@ export default function Home({ onNav }: Props) {
             </div>
           </>
         ) : (
-          <div className="vbg">
-            <div className="play-c">&#9654;</div>
+          <div className="vbg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ textAlign: 'center', color: '#fff', padding: '0 20px' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>No video available</div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => { void loadFeed(feedCat, searchTerm); }}
+              >
+                Reload Feed
+              </button>
+            </div>
           </div>
         )}
 
