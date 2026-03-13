@@ -1181,7 +1181,7 @@ export default function Home({ onNav }: Props) {
     onOffsetChange: (offset: number) => {
       setStripOffset(offset);
     },
-    onCommit: () => {
+    onCommit: (_direction: 'up' | 'down') => {
       finalizeSwipe();
     },
     onSnapBack: () => {
@@ -1296,7 +1296,8 @@ export default function Home({ onNav }: Props) {
     if (swipeCountdown > 0 || isAnimating) return;
     const direction: 'up' | 'down' = dy < 0 ? 'up' : 'down';
     if (!prepareSwipeCommit(direction)) {
-      // No next video — snap back via momentum
+      // No next video — snap back via momentum with animation flag set
+      setIsAnimating(true);
       momentumRef.current?.startMomentum(stripOffset, 0);
       return;
     }
