@@ -6,6 +6,48 @@ const LOCALHOST_URL_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
 const DATA_OR_BLOB_URL_RE = /^(?:data|blob):/i;
 const MEDIA_URL_KEYS = new Set(['file_url', 'thumbnail_url', 'avatar_url']);
+const STREAM_MANIFEST_RE = /^https?:\/\/(?:iframe\.)?videodelivery\.net\/[^?#]+\/manifest\/video\.m3u8(?:[?#].*)?$/i;
+
+interface NetworkConnectionLike {
+  type?: string;
+  effectiveType?: string;
+}
+
+const getBandwidthHintByNetwork = (): string | null => {
+  if (typeof navigator === 'undefined') return null;
+  const nav = navigator as Navigator & {
+    connection?: NetworkConnectionLike;
+    mozConnection?: NetworkConnectionLike;
+    webkitConnection?: NetworkConnectionLike;
+  };
+  const connection = nav.connection || nav.mozConnection || nav.webkitConnection;
+  if (!connection) return null;
+
+  const type = String(connection.type || '').toLowerCase();
+  const effectiveType = String(connection.effectiveType || '').toLowerCase();
+
+  // Requested mapping:
+  // Wi-Fi -> 2.4 Mbps (480p range)
+  // 5G   -> 1.0 Mbps (360p range)
+  // 4G   -> 0.8 Mbps (Stream often still picks 360p)
+  if (type === 'wifi') return '2.4';
+  if (effectiveType === '5g') return '1.0';
+  if (effectiveType === '4g') return '0.8';
+  return null;
+};
+
+const applyStreamBandwidthHint = (url: string | null | undefined): string | null | undefined => {
+  if (!url || !STREAM_MANIFEST_RE.test(url)) return url;
+  const hint = getBandwidthHintByNetwork();
+  if (!hint) return url;
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set('clientBandwidthHint', hint);
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+};
 
 const getMediaBase = (): string => {
   if (ABSOLUTE_HTTP_URL_RE.test(API_BASE)) {
@@ -47,7 +89,10 @@ const normalizeMediaUrlsInPayload = (value: unknown): unknown => {
       ) {
         normalizedFieldValue = 'uploads/avatars/' + normalizedFieldValue;
       }
-      record[key] = normalizeMediaUrl(normalizedFieldValue);
+      const mediaUrl = normalizeMediaUrl(normalizedFieldValue);
+      record[key] = key === 'file_url'
+        ? applyStreamBandwidthHint(mediaUrl)
+        : mediaUrl;
       continue;
     }
     if (fieldValue && typeof fieldValue === 'object') {
