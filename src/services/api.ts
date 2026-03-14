@@ -7,6 +7,9 @@ const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
 const DATA_OR_BLOB_URL_RE = /^(?:data|blob):/i;
 const MEDIA_URL_KEYS = new Set(['file_url', 'thumbnail_url', 'avatar_url']);
 const STREAM_MANIFEST_RE = /^https?:\/\/(?:iframe\.)?videodelivery\.net\/[^?#]+\/manifest\/video\.m3u8(?:[?#].*)?$/i;
+const CFSTREAM_REL_RE = /^\/?uploads\/videos\/cfstream:([a-z0-9_-]+)(?:[?#].*)?$/i;
+const CFSTREAM_ABS_RE = /^https?:\/\/[^/]+\/uploads\/videos\/cfstream:([a-z0-9_-]+)(?:[?#].*)?$/i;
+const CFSTREAM_DIRECT_RE = /^cfstream:([a-z0-9_-]+)$/i;
 
 interface NetworkConnectionLike {
   type?: string;
@@ -49,6 +52,18 @@ const applyStreamBandwidthHint = (url: string | null | undefined): string | null
   }
 };
 
+const normalizeCfstreamUrl = (url: string | null | undefined): string | null | undefined => {
+  if (!url) return url;
+  const clean = String(url).trim();
+  const direct = clean.match(CFSTREAM_DIRECT_RE)?.[1];
+  if (direct) return `https://videodelivery.net/${direct}/manifest/video.m3u8`;
+  const rel = clean.match(CFSTREAM_REL_RE)?.[1];
+  if (rel) return `https://videodelivery.net/${rel}/manifest/video.m3u8`;
+  const abs = clean.match(CFSTREAM_ABS_RE)?.[1];
+  if (abs) return `https://videodelivery.net/${abs}/manifest/video.m3u8`;
+  return url;
+};
+
 const getMediaBase = (): string => {
   if (ABSOLUTE_HTTP_URL_RE.test(API_BASE)) {
     return API_BASE.replace(/\/api\/?$/, '');
@@ -60,6 +75,8 @@ const getMediaBase = (): string => {
 export const normalizeMediaUrl = (url: string | null | undefined): string | null | undefined => {
   if (!url) return url;
   if (DATA_OR_BLOB_URL_RE.test(url)) return url;
+  const normalizedCfstream = normalizeCfstreamUrl(url);
+  if (normalizedCfstream !== url) return normalizedCfstream;
   if (!ABSOLUTE_HTTP_URL_RE.test(url)) {
     const mediaBase = getMediaBase();
     if (!mediaBase) return url;
