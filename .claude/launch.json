@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "talents-stage-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173,
+      "cwd": "/Users/sorinrotaru/Downloads/project/talent-stage-react"
+    },
+    {
+      "name": "talent-stage-native-web",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "export PATH=/usr/local/bin:$PATH && npx expo start --web --port 8081"],
+      "port": 8081,
+      "cwd": "/Users/sorinrotaru/Downloads/project/talent-stage-react/talent-stage-native"
+    },
+    {
+      "name": "talents-stage-backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "cwd": "/Users/sorinrotaru/Downloads/project/talent-stage-react/talents-stage-backend/ts-backend-fix"
+    }
+  ]
+}
