@@ -4,13 +4,14 @@ import {
   Alert,
   Image,
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import AppPressable from '../../components/AppPressable';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,8 +23,9 @@ import { toast } from '../../components/Toast';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import type { User } from '../../types';
 import LoginScreen from '../auth/LoginScreen';
+import { TRANSPARENT_AVATAR_SOURCE } from '../../constants/avatar';
 
-const DEFAULT_AVATAR_SOURCE = 'https://web-demo.space/icons/account.png';
+const DEFAULT_AVATAR_SOURCE = TRANSPARENT_AVATAR_SOURCE;
 
 interface Strike {
   id: string;
@@ -176,11 +178,11 @@ export default function AccountScreen() {
   }, [user]);
 
   const getAvatarUri = () => {
-    if (!user) return DEFAULT_AVATAR_SOURCE;
-    return user.avatar_url || DEFAULT_AVATAR_SOURCE;
+    if (!user) return '';
+    return '';
   };
 
-  const isRealAvatar = getAvatarUri() !== DEFAULT_AVATAR_SOURCE;
+  const isRealAvatar = false;
 
   const pickAvatar = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -325,6 +327,13 @@ export default function AccountScreen() {
   if (!loggedIn) return <LoginScreen />;
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: AppColors.backgroundPrimary }} edges={['top']}>
+    <View style={styles.backRow}>
+      <AppPressable onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={20} color={AppColors.textPrimary} />
+        <Text style={styles.backText}>Back</Text>
+      </AppPressable>
+    </View>
     <ScrollView contentContainerStyle={styles.container}>
       {/* Avatar + name */}
       <View style={styles.headerSection}>
@@ -338,17 +347,17 @@ export default function AccountScreen() {
               <Image
                 source={{ uri: getAvatarUri() }}
                 style={styles.avatarImage}
-                defaultSource={{ uri: DEFAULT_AVATAR_SOURCE }}
+                defaultSource={DEFAULT_AVATAR_SOURCE}
               />
             )}
           </View>
-          <Pressable onPress={() => void pickAvatar()} style={styles.avatarEditBtn}>
+          <AppPressable onPress={() => void pickAvatar()} style={styles.avatarEditBtn}>
             <Ionicons name="pencil" size={12} color="#fff" />
-          </Pressable>
+          </AppPressable>
           {isRealAvatar && (
-            <Pressable onPress={() => void deleteAvatar()} style={styles.avatarDeleteBtn}>
+            <AppPressable onPress={() => void deleteAvatar()} style={styles.avatarDeleteBtn}>
               <Ionicons name="close" size={14} color="#fff" />
-            </Pressable>
+            </AppPressable>
           )}
         </View>
 
@@ -433,9 +442,9 @@ export default function AccountScreen() {
       </View>
 
       {/* Save button */}
-      <Pressable onPress={() => void saveProfile()} style={styles.saveBtn}>
+      <AppPressable onPress={() => void saveProfile()} style={styles.saveBtn}>
         <Text style={styles.saveBtnText}>Save</Text>
-      </Pressable>
+      </AppPressable>
 
       {/* Creator Analytics */}
       <View style={styles.section}>
@@ -464,12 +473,12 @@ export default function AccountScreen() {
               <AnalyticsTile label="Follow Conversion" value={pct(ca.follow_conversion_30d)} />
             </View>
 
-            <Pressable
+            <AppPressable
               onPress={() => navigation.navigate('VideoAnalytics')}
               style={styles.fullAnalyticsBtn}
             >
               <Text style={styles.fullAnalyticsBtnText}>Open full video analytics</Text>
-            </Pressable>
+            </AppPressable>
           </View>
         )}
       </View>
@@ -521,23 +530,23 @@ export default function AccountScreen() {
 
       {/* Danger zone */}
       <View style={styles.dangerSection}>
-        <Pressable
+        <AppPressable
           onPress={() => { setCurPwd(''); setNewPwd(''); setConfirmPwd(''); setPwdModal(true); }}
           style={styles.dangerRow}
         >
           <Ionicons name="lock-closed-outline" size={18} color="rgba(255,255,255,0.7)" />
           <Text style={styles.dangerRowText}>Change Password</Text>
-        </Pressable>
+        </AppPressable>
 
-        <Pressable onPress={() => void doLogout()} style={styles.dangerRow}>
+        <AppPressable onPress={() => void doLogout()} style={styles.dangerRow}>
           <Ionicons name="log-out-outline" size={18} color="rgba(255,100,100,0.85)" />
           <Text style={[styles.dangerRowText, { color: 'rgba(255,100,100,0.85)' }]}>Log out</Text>
-        </Pressable>
+        </AppPressable>
 
-        <Pressable onPress={delAcct} style={[styles.dangerRow, { borderBottomWidth: 0 }]}>
+        <AppPressable onPress={delAcct} style={[styles.dangerRow, { borderBottomWidth: 0 }]}>
           <Ionicons name="trash-outline" size={18} color="rgba(255,50,50,0.6)" />
           <Text style={[styles.dangerRowText, { color: 'rgba(255,50,50,0.6)' }]}>Delete Account</Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       {/* Change Password Modal */}
@@ -583,17 +592,18 @@ export default function AccountScreen() {
             </View>
 
             <View style={styles.modalBtnRow}>
-              <Pressable onPress={() => setPwdModal(false)} style={styles.modalCancelBtn}>
+              <AppPressable onPress={() => setPwdModal(false)} style={styles.modalCancelBtn}>
                 <Text style={styles.modalCancelBtnText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={() => void changePassword()} style={styles.modalConfirmBtn}>
+              </AppPressable>
+              <AppPressable onPress={() => void changePassword()} style={styles.modalConfirmBtn}>
                 <Text style={styles.modalConfirmBtnText}>Update Password</Text>
-              </Pressable>
+              </AppPressable>
             </View>
           </View>
         </View>
       </Modal>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -614,17 +624,32 @@ interface QuickActionButtonProps {
 
 function QuickActionButton({ iconName, label, onPress }: QuickActionButtonProps) {
   return (
-    <Pressable onPress={onPress} style={styles.quickActionBtn}>
+    <AppPressable onPress={onPress} style={styles.quickActionBtn}>
       <Ionicons name={iconName} size={18} color={AppColors.textPrimary} />
       <Text style={styles.quickActionBtnText}>{label}</Text>
-    </Pressable>
+    </AppPressable>
   );
 }
 
 const styles = StyleSheet.create({
+  backRow: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  backText: {
+    color: AppColors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
   container: {
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 25,
     backgroundColor: AppColors.backgroundPrimary,
     alignItems: 'center',
   },
@@ -637,6 +662,7 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.07)',
+    top: 20
   },
   avatarWrapper: {
     position: 'relative',

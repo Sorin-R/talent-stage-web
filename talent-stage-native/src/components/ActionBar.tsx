@@ -7,6 +7,7 @@ import { apiFetch } from '../services/api';
 import { toast } from './Toast';
 import { AppColors } from '../theme/colors';
 import { REPORT_REASONS } from './ShareSheet';
+import { TRANSPARENT_AVATAR_SOURCE } from '../constants/avatar';
 
 interface Props {
   onLike: () => void;
@@ -18,7 +19,7 @@ interface Props {
   showReport?: boolean;
 }
 
-const DEFAULT_AVATAR = require('../../assets/icon.png');
+const DEFAULT_AVATAR = TRANSPARENT_AVATAR_SOURCE;
 
 export default function ActionBar({
   onLike,
@@ -38,41 +39,7 @@ export default function ActionBar({
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const followCacheRef = useRef<Record<string, boolean>>({});
   const saveCacheRef = useRef<Record<string, boolean>>({});
-  const creatorAvatarSource = currentVideo
-    ? (
-      String(currentVideo.user_id) === String(user?.id)
-        ? ((user?.avatar_url || currentVideo.avatar_url) ? { uri: user?.avatar_url || currentVideo.avatar_url || '' } : DEFAULT_AVATAR)
-        : (currentVideo.avatar_url ? { uri: currentVideo.avatar_url } : DEFAULT_AVATAR)
-    )
-    : DEFAULT_AVATAR;
-
-  useEffect(() => {
-    if (!currentVideo) {
-      setIsFollowing(false);
-      setIsSaved(false);
-      return;
-    }
-    setIsFollowing(!!currentVideo.is_following_author);
-    setIsSaved(!!currentVideo.is_saved);
-
-    if (!loggedIn) return;
-
-    const cachedFollow = followCacheRef.current[currentVideo.user_id];
-    if (typeof cachedFollow === 'boolean') {
-      setIsFollowing(cachedFollow);
-    }
-    const cachedSaved = saveCacheRef.current[currentVideo.id];
-    if (typeof cachedSaved === 'boolean') {
-      setIsSaved(cachedSaved);
-    }
-  }, [currentVideo, loggedIn]);
-
-  useEffect(() => {
-    if (!loggedIn) {
-      followCacheRef.current = {};
-      saveCacheRef.current = {};
-    }
-  }, [loggedIn]);
+  const creatorAvatarSource = DEFAULT_AVATAR;
 
   const doFollow = async () => {
     if (!loggedIn) { toast('Sign in to follow'); onNav('Login'); return; }
@@ -127,14 +94,11 @@ export default function ActionBar({
 
   const openCreator = () => {
     if (!currentVideo) return;
-    const resolvedAvatarUrl = String(currentVideo.user_id) === String(user?.id)
-      ? (user?.avatar_url || currentVideo.avatar_url || null)
-      : (currentVideo.avatar_url || null);
     onNav('CreatorProfile', {
       userId: currentVideo.user_id,
       username: currentVideo.username,
       fullName: currentVideo.full_name,
-      avatarUrl: resolvedAvatarUrl,
+      avatarUrl: null,
     });
   };
 

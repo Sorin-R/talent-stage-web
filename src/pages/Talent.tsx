@@ -42,7 +42,7 @@ export default function Talent({ talentType, talentTypes = [], onNav }: Props) {
   };
 
   const goToUser = (u: UserWithStats) => {
-    onNav('creator', { userId: u.id, username: u.username, fullName: u.full_name || u.username, avatarUrl: u.avatar_url, isFollowing: !!u.is_followed });
+    onNav('creator', { userId: u.id, username: u.username, fullName: u.full_name || u.username, avatarUrl: null, isFollowing: !!u.is_followed });
   };
 
   return (
@@ -68,7 +68,7 @@ export default function Talent({ talentType, talentTypes = [], onNav }: Props) {
         ) : users.map((u) => (
           <div className="ur" key={u.id}>
             <div className="uav" onClick={() => goToUser(u)} style={{ cursor: 'pointer' }}>
-              <img src={u.avatar_url || DEFAULT_AVATAR} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+              <img src={DEFAULT_AVATAR} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
                 onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_AVATAR; }} alt="" />
             </div>
             <div className="uname" onClick={() => goToUser(u)} style={{ cursor: 'pointer', textDecoration: 'underline' }}>{u.full_name || u.username}</div>

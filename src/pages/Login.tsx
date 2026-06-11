@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { DEFAULT_AVATAR, useAppStore } from '../store/useAppStore';
 import { apiFetch } from '../services/api';
 import { toast } from '../components/Toast';
 import Logo from '../components/Logo';
@@ -37,7 +37,7 @@ export default function Login({ onNav }: Props) {
       </div>
       <div className="ac">
         <div className="cav2" style={{ overflow: 'hidden' }}>
-          <img src="/icons/account.png" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} alt="" />
+          <img src={DEFAULT_AVATAR} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} alt="" />
         </div>
         <h2>Login</h2>
         <div className="ff">

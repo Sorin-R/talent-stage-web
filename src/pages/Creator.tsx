@@ -55,7 +55,6 @@ export default function Creator({ data, onNav }: Props) {
     likesCount: 0,
     dislikesCount: 0,
   });
-  const [creatorAvatarUrl, setCreatorAvatarUrl] = useState<string | null>(data?.avatarUrl || null);
   const [creatorWebsite, setCreatorWebsite] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('newest');
   const [reportModal, setReportModal] = useState(false);
@@ -66,7 +65,6 @@ export default function Creator({ data, onNav }: Props) {
   useEffect(() => {
     if (data) {
       setIsFollowing(!!data.isFollowing);
-      setCreatorAvatarUrl(data.avatarUrl || null);
       void loadCreatorUserStats(data.userId);
       loadVideos(data.userId);
     } else {
@@ -77,7 +75,6 @@ export default function Creator({ data, onNav }: Props) {
         likesCount: 0,
         dislikesCount: 0,
       });
-      setCreatorAvatarUrl(null);
       setCreatorWebsite(null);
     }
   }, [data, loggedIn]);
@@ -87,7 +84,6 @@ export default function Creator({ data, onNav }: Props) {
     const userData = res.data;
     if (!res.success || !userData) return;
     setIsFollowing(!!userData.is_followed);
-    setCreatorAvatarUrl(userData.avatar_url || data?.avatarUrl || null);
     setCreatorStats((prev) => ({
       ...prev,
       followerCount: Number(userData.follower_count || 0),
@@ -218,7 +214,7 @@ export default function Creator({ data, onNav }: Props) {
       {/* Creator header */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0 20px', gap: 10 }}>
         <div style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', border: '3px solid rgba(255,255,255,.3)' }}>
-          <img src={creatorAvatarUrl || DEFAULT_AVATAR}
+          <img src={DEFAULT_AVATAR}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_AVATAR; }} alt="" />
         </div>

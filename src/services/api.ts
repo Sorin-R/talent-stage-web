@@ -100,11 +100,9 @@ const normalizeMediaUrlsInPayload = (value: unknown): unknown => {
       if (
         key === 'avatar_url'
         && normalizedFieldValue
-        && !ABSOLUTE_HTTP_URL_RE.test(normalizedFieldValue)
-        && !normalizedFieldValue.startsWith('/')
-        && !normalizedFieldValue.includes('/')
       ) {
-        normalizedFieldValue = 'uploads/avatars/' + normalizedFieldValue;
+        record[key] = null;
+        continue;
       }
       const mediaUrl = normalizeMediaUrl(normalizedFieldValue);
       record[key] = key === 'file_url'

@@ -34,7 +34,7 @@ export default function Following({ onNav }: Props) {
   };
 
   const goToUser = (u: UserWithStats) => {
-    onNav('creator', { userId: u.id, username: u.username, fullName: u.full_name || u.username, avatarUrl: u.avatar_url, isFollowing: true });
+    onNav('creator', { userId: u.id, username: u.username, fullName: u.full_name || u.username, avatarUrl: null, isFollowing: true });
   };
 
   return (
@@ -52,7 +52,7 @@ export default function Following({ onNav }: Props) {
         ) : following.map((u) => (
           <div className="ur" key={u.id}>
             <div className="uav" onClick={() => goToUser(u)} style={{ cursor: 'pointer' }}>
-              <img src={u.avatar_url || DEFAULT_AVATAR} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+              <img src={DEFAULT_AVATAR} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
                 onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_AVATAR; }} alt="" />
             </div>
             <div className="uname" onClick={() => goToUser(u)} style={{ cursor: 'pointer', textDecoration: 'underline' }}>{u.full_name || u.username}</div>

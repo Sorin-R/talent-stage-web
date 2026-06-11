@@ -6,13 +6,14 @@ import {
   Image,
   Linking,
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import AppPressable from '../../components/AppPressable';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -20,10 +21,12 @@ import { AppColors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { toast } from '../../components/Toast';
 import { useAppStore } from '../../store/useAppStore';
+import SmartVideoThumbnail from '../../components/SmartVideoThumbnail';
 import type { PaginatedResponse, UserWithStats, Video } from '../../types';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
+import { TRANSPARENT_AVATAR_SOURCE } from '../../constants/avatar';
 
-const DEFAULT_AVATAR_SOURCE = 'https://web-demo.space/icons/account.png';
+const DEFAULT_AVATAR_SOURCE = TRANSPARENT_AVATAR_SOURCE;
 
 type SortMode = 'most_views' | 'more_likes' | 'more_dislikes' | 'newest' | 'oldest';
 const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
@@ -83,6 +86,7 @@ export default function CreatorProfileScreen() {
   });
   const [creatorWebsite, setCreatorWebsite] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('newest');
+  const [sortPickerOpen, setSortPickerOpen] = useState(false);
 
   // Report modal state
   const [reportModal, setReportModal] = useState(false);
@@ -249,11 +253,11 @@ export default function CreatorProfileScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.screenContainer}>
+      <SafeAreaView style={styles.screenContainer} edges={['top']}>
         <View style={styles.centerState}>
           <ActivityIndicator size="large" color={AppColors.textPrimary} />
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -261,17 +265,17 @@ export default function CreatorProfileScreen() {
     <View>
       {/* Back button */}
       <View style={styles.backRow}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+        <AppPressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={20} color={AppColors.textPrimary} />
           <Text style={styles.backText}>Back</Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       {/* Creator header */}
       <View style={styles.headerContainer}>
         <View style={styles.avatarBorder}>
           <Image
-            source={{ uri: creatorUser?.avatar_url || DEFAULT_AVATAR_SOURCE }}
+            source={DEFAULT_AVATAR_SOURCE}
             style={styles.avatarImage}
           />
         </View>
@@ -285,41 +289,33 @@ export default function CreatorProfileScreen() {
         </View>
 
         {creatorWebsite && websiteHref && (
-          <Pressable onPress={openWebsite}>
+          <AppPressable onPress={openWebsite}>
             <Text style={styles.websiteLink}>{creatorWebsite}</Text>
-          </Pressable>
+          </AppPressable>
         )}
 
         <View style={styles.actionRow}>
-          <Pressable
+          <AppPressable
             onPress={doFollow}
             style={[styles.followButton, isFollowing && styles.followingButtonBg]}
           >
             <Text style={styles.followButtonText}>{isFollowing ? 'Following' : 'Follow'}</Text>
-          </Pressable>
-          <Pressable onPress={openReportModal} style={styles.reportButton}>
+          </AppPressable>
+          <AppPressable onPress={openReportModal} style={styles.reportButton}>
             <Ionicons name="flag-outline" size={16} color={AppColors.textPrimary} />
             <Text style={styles.reportButtonText}>Report</Text>
-          </Pressable>
+          </AppPressable>
         </View>
       </View>
 
-      {/* Sort options */}
+      {/* Sort dropdown */}
       <View style={styles.sortContainer}>
-        <View style={styles.sortPillRow}>
-          {SORT_OPTIONS.map((opt) => {
-            const active = sortMode === opt.value;
-            return (
-              <Pressable
-                key={opt.value}
-                onPress={() => setSortMode(opt.value)}
-                style={[styles.sortPill, active && styles.sortPillActive]}
-              >
-                <Text style={styles.sortPillText}>{opt.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <AppPressable onPress={() => setSortPickerOpen(true)} style={styles.dropdownButton}>
+          <Text style={styles.dropdownButtonText}>
+            {SORT_OPTIONS.find((o) => o.value === sortMode)?.label || 'Sort by'}
+          </Text>
+          <Ionicons name="chevron-down" size={16} color={AppColors.textSecondary} />
+        </AppPressable>
       </View>
 
       {sortedVideos.length === 0 && (
@@ -331,7 +327,7 @@ export default function CreatorProfileScreen() {
   );
 
   const renderVideoTile = ({ item, index }: { item: Video; index: number }) => (
-    <Pressable
+    <AppPressable
       onPress={() => openVideo(sortedVideos, index)}
       style={[
         styles.videoTile,
@@ -339,10 +335,11 @@ export default function CreatorProfileScreen() {
         index % NUM_COLUMNS !== NUM_COLUMNS - 1 && { marginRight: GRID_GAP },
       ]}
     >
-      <Image
-        source={{ uri: item.thumbnail_url || DEFAULT_AVATAR_SOURCE }}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
+      <SmartVideoThumbnail
+        thumbnailUrl={item.thumbnail_url}
+        fileUrl={item.file_url}
+        imageStyle={StyleSheet.absoluteFill}
+        fallbackStyle={styles.videoTileFallback}
       />
       {/* Play icon overlay */}
       <View style={styles.playOverlay}>
@@ -365,11 +362,11 @@ export default function CreatorProfileScreen() {
           </View>
         </View>
       </View>
-    </Pressable>
+    </AppPressable>
   );
 
   return (
-    <View style={styles.screenContainer}>
+    <SafeAreaView style={styles.screenContainer} edges={['top']}>
       <FlatList
         data={sortedVideos}
         keyExtractor={(v) => v.id}
@@ -387,12 +384,12 @@ export default function CreatorProfileScreen() {
             <Text style={styles.modalTitle}>Report User</Text>
 
             <Text style={styles.inputLabel}>Reason</Text>
-            <Pressable onPress={() => setReportReasonPicker(true)} style={styles.selectButton}>
+            <AppPressable onPress={() => setReportReasonPicker(true)} style={styles.selectButton}>
               <Text style={[styles.selectButtonText, !reportReason && { opacity: 0.5 }]}>
                 {reportReason || '-- Select a reason --'}
               </Text>
               <Ionicons name="chevron-down" size={16} color={AppColors.textSecondary} />
-            </Pressable>
+            </AppPressable>
 
             <Text style={styles.inputLabel}>Details (optional)</Text>
             <TextInput
@@ -406,14 +403,14 @@ export default function CreatorProfileScreen() {
             />
 
             <View style={styles.modalActions}>
-              <Pressable
+              <AppPressable
                 onPress={() => setReportModal(false)}
                 disabled={reportSubmitting}
                 style={styles.cancelButton}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
+              </AppPressable>
+              <AppPressable
                 onPress={doReportUser}
                 disabled={reportSubmitting || !reportReason}
                 style={[
@@ -424,7 +421,7 @@ export default function CreatorProfileScreen() {
                 <Text style={styles.submitReportText}>
                   {reportSubmitting ? 'Reporting...' : 'Report User'}
                 </Text>
-              </Pressable>
+              </AppPressable>
             </View>
           </View>
         </View>
@@ -432,11 +429,11 @@ export default function CreatorProfileScreen() {
 
       {/* Reason picker modal */}
       <Modal visible={reportReasonPicker} transparent animationType="fade" onRequestClose={() => setReportReasonPicker(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setReportReasonPicker(false)}>
+        <AppPressable style={styles.modalOverlay} onPress={() => setReportReasonPicker(false)}>
           <View style={styles.reasonPickerCard}>
             <Text style={styles.modalTitle}>Select Reason</Text>
             {REPORT_REASONS.map((reason) => (
-              <Pressable
+              <AppPressable
                 key={reason}
                 onPress={() => { setReportReason(reason); setReportReasonPicker(false); }}
                 style={[styles.reasonOption, reportReason === reason && styles.reasonOptionActive]}
@@ -445,12 +442,31 @@ export default function CreatorProfileScreen() {
                 {reportReason === reason && (
                   <Ionicons name="checkmark" size={18} color={AppColors.accentPrimary} />
                 )}
-              </Pressable>
+              </AppPressable>
             ))}
           </View>
-        </Pressable>
+        </AppPressable>
       </Modal>
-    </View>
+
+      {/* Sort Picker Modal */}
+      <Modal visible={sortPickerOpen} transparent animationType="fade" onRequestClose={() => setSortPickerOpen(false)}>
+        <AppPressable style={styles.dropdownBackdrop} onPress={() => setSortPickerOpen(false)}>
+          <View style={styles.dropdownSheet}>
+            <Text style={styles.dropdownSheetTitle}>Sort by</Text>
+            {SORT_OPTIONS.map((opt) => (
+              <AppPressable
+                key={opt.value}
+                onPress={() => { setSortMode(opt.value); setSortPickerOpen(false); }}
+                style={[styles.dropdownItem, sortMode === opt.value && styles.dropdownItemActive]}
+              >
+                <Text style={[styles.dropdownItemText, sortMode === opt.value && styles.dropdownItemTextActive]}>{opt.label}</Text>
+                {sortMode === opt.value && <Ionicons name="checkmark" size={18} color={AppColors.accentPrimary} />}
+              </AppPressable>
+            ))}
+          </View>
+        </AppPressable>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
@@ -590,6 +606,69 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: AppColors.borderSecondary,
+    backgroundColor: AppColors.backgroundCard,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    width: '100%',
+  },
+  dropdownButtonText: {
+    color: AppColors.textPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  dropdownBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  dropdownSheet: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    overflow: 'hidden',
+  },
+  dropdownSheetTitle: {
+    color: AppColors.textPrimary,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  dropdownItemActive: {
+    backgroundColor: 'rgba(123,63,228,0.12)',
+  },
+  dropdownItemText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+  },
+  dropdownItemTextActive: {
+    color: AppColors.accentPrimary,
+    fontWeight: '600',
+  },
   emptyContainer: {
     padding: 24,
     alignItems: 'center',
@@ -608,6 +687,12 @@ const styles = StyleSheet.create({
   videoTile: {
     borderRadius: 8,
     overflow: 'hidden',
+    backgroundColor: '#181818',
+  },
+  videoTileFallback: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#181818',
   },
   playOverlay: {

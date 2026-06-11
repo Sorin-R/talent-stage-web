@@ -3,11 +3,12 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import AppPressable from '../../components/AppPressable';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { AppColors } from '../../theme/colors';
@@ -15,8 +16,9 @@ import { apiFetch } from '../../services/api';
 import { toast } from '../../components/Toast';
 import { useAppStore } from '../../store/useAppStore';
 import type { PaginatedResponse, UserWithStats } from '../../types';
+import { TRANSPARENT_AVATAR_SOURCE } from '../../constants/avatar';
 
-const DEFAULT_AVATAR_SOURCE = 'https://web-demo.space/icons/account.png';
+const DEFAULT_AVATAR_SOURCE = TRANSPARENT_AVATAR_SOURCE;
 
 export default function FollowersScreen() {
   const navigation = useNavigation<any>();
@@ -55,13 +57,13 @@ export default function FollowersScreen() {
   };
 
   return (
-    <View style={styles.screenContainer}>
+    <SafeAreaView style={styles.screenContainer} edges={['top']}>
       {/* Header */}
       <View style={styles.headerContainer}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+        <AppPressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={20} color={AppColors.textPrimary} />
           <Text style={styles.backText}>Back</Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       <View style={styles.countContainer}>
@@ -79,20 +81,20 @@ export default function FollowersScreen() {
           contentContainerStyle={styles.listContent}
           renderItem={({ item: u }) => (
             <View style={styles.userRow}>
-              <Pressable onPress={() => goToUser(u)}>
+              <AppPressable onPress={() => goToUser(u)}>
                 <Image
-                  source={{ uri: u.avatar_url || DEFAULT_AVATAR_SOURCE }}
+                  source={DEFAULT_AVATAR_SOURCE}
                   style={styles.userAvatar}
                 />
-              </Pressable>
-              <Pressable onPress={() => goToUser(u)} style={styles.userNameContainer}>
+              </AppPressable>
+              <AppPressable onPress={() => goToUser(u)} style={styles.userNameContainer}>
                 <Text style={styles.userName} numberOfLines={1}>
                   {u.full_name || u.username}
                 </Text>
-              </Pressable>
-              <Pressable onPress={() => removeFollower(u.id)} style={styles.cancelButton}>
+              </AppPressable>
+              <AppPressable onPress={() => removeFollower(u.id)} style={styles.cancelButton}>
                 <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
+              </AppPressable>
             </View>
           )}
           ListEmptyComponent={
@@ -102,7 +104,7 @@ export default function FollowersScreen() {
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

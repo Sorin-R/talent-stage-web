@@ -22,6 +22,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TRANSPARENT_AVATAR_SOURCE } from '../constants/avatar';
 import { AppColors } from '../theme/colors';
 import { TALENT_TYPES, type Comment, type PaginatedResponse, type Video } from '../types';
 import { apiFetch, getVideoThumbnailUrl } from '../services/api';
@@ -36,7 +37,6 @@ const FEED_SEEN_STORAGE_PREFIX = 'ts_feed_seen_v1';
 const TITLE_PREVIEW_CHARS = 35;
 const INPUT_PLACEHOLDER_COLOR = 'rgba(255,255,255,0.72)';
 const WEB_ICON_SOURCES = {
-  account: require('../../assets/icons/account.png'),
   search: require('../../assets/icons/search.png'),
   menu: require('../../assets/icons/menu.png'),
   swipeUp: require('../../assets/icons/swipe-up.png'),
@@ -1109,7 +1109,7 @@ export default function HomeScreen() {
           }}
         >
           <View style={styles.titleUserAvatarWrap}>
-            <Image source={activeVideoAvatarUrl ? { uri: activeVideoAvatarUrl } : WEB_ICON_SOURCES.account} style={styles.titleUserAvatar} />
+            <Image source={TRANSPARENT_AVATAR_SOURCE} style={styles.titleUserAvatar} />
           </View>
           <Text style={styles.titleUserName} numberOfLines={1}>@{activeVideo?.username || 'user'}</Text>
         </AppPressable>

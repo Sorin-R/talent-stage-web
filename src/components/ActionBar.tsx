@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { DEFAULT_AVATAR, useAppStore } from '../store/useAppStore';
 import { apiFetch } from '../services/api';
 import { toast } from './Toast';
-import { resolveVideoAvatarSrc } from '../utils/avatar';
 
 interface Props {
   onLike: () => void;
@@ -22,9 +21,8 @@ export default function ActionBar({
   videoVoted,
   showActions = true,
   showReport = true,
-  creatorAvatarUrl = null,
 }: Props) {
-  const { currentVideo, feedVideos, setFeedVideos, setCurrentVideo, loggedIn, setShareOpen, user } = useAppStore();
+  const { currentVideo, feedVideos, setFeedVideos, setCurrentVideo, loggedIn, setShareOpen } = useAppStore();
   const [isFollowing, setIsFollowing] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [hintMode, setHintMode] = useState(false);
@@ -178,21 +176,11 @@ export default function ActionBar({
 
   const openCreator = () => {
     if (!currentVideo) return;
-    const resolvedAvatarUrl = creatorAvatarUrl
-      || (String(currentVideo.user_id) === String(user?.id)
-        ? resolveVideoAvatarSrc(
-          currentVideo.user_id,
-          currentVideo.avatar_url,
-          user?.id,
-          user?.avatar_url,
-          null,
-        )
-        : null);
     onNav('creator', {
       userId: currentVideo.user_id,
       username: currentVideo.username,
       fullName: currentVideo.full_name,
-      avatarUrl: resolvedAvatarUrl,
+      avatarUrl: null,
       isFollowing: followCacheRef.current[currentVideo.user_id] ?? isFollowing,
     });
   };
@@ -239,20 +227,9 @@ export default function ActionBar({
         >
           <div className="r-user-avatar">
             <img
-              src={currentVideo
-                ? (creatorAvatarUrl
-                  || (String(currentVideo.user_id) === String(user?.id)
-                    ? resolveVideoAvatarSrc(
-                      currentVideo.user_id,
-                      currentVideo.avatar_url,
-                      user?.id,
-                      user?.avatar_url,
-                      '/icons/account.png',
-                    )
-                    : '/icons/account.png'))
-                : '/icons/account.png'}
+              src={DEFAULT_AVATAR}
               alt="User avatar"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/icons/account.png'; }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR; }}
             />
           </div>
           <div className="r-user-name">
