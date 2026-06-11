@@ -21,7 +21,7 @@ export default function ActionBar({
   showActions = true,
   showReport = true,
 }: Props) {
-  const { currentVideo, feedVideos, setFeedVideos, setCurrentVideo, loggedIn, setShareOpen } = useAppStore();
+  const { currentVideo, feedVideos, setFeedVideos, setCurrentVideo, loggedIn, setShareOpen, user } = useAppStore();
   const [isFollowing, setIsFollowing] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [hintMode, setHintMode] = useState(false);
@@ -176,11 +176,14 @@ export default function ActionBar({
 
   const openCreator = () => {
     if (!currentVideo) return;
+    const resolvedAvatarUrl = currentVideo.user_id === user?.id
+      ? (user?.avatar_url || currentVideo.avatar_url || null)
+      : (currentVideo.avatar_url || null);
     onNav('creator', {
       userId: currentVideo.user_id,
       username: currentVideo.username,
       fullName: currentVideo.full_name,
-      avatarUrl: currentVideo.avatar_url,
+      avatarUrl: resolvedAvatarUrl,
       isFollowing: followCacheRef.current[currentVideo.user_id] ?? isFollowing,
     });
   };
@@ -227,7 +230,13 @@ export default function ActionBar({
         >
           <div className="r-user-avatar">
             <img
-              src={currentVideo?.avatar_url || '/icons/account.png'}
+              src={
+                currentVideo
+                  ? (currentVideo.user_id === user?.id
+                    ? (user?.avatar_url || currentVideo.avatar_url || '/icons/account.png')
+                    : (currentVideo.avatar_url || '/icons/account.png'))
+                  : '/icons/account.png'
+              }
               alt="User avatar"
               onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/icons/account.png'; }}
             />

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, Modal, TextInput, ScrollView } from 'react-native';
+import { View, Text, Image, StyleSheet, Modal, TextInput, ScrollView } from 'react-native';
+import AppPressable from './AppPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '../store/useAppStore';
 import { apiFetch } from '../services/api';
@@ -28,7 +29,7 @@ export default function ActionBar({
   showActions = true,
   showReport = true,
 }: Props) {
-  const { currentVideo, feedVideos, setFeedVideos, setCurrentVideo, loggedIn, setShareSheetOpen } = useAppStore();
+  const { currentVideo, feedVideos, setFeedVideos, setCurrentVideo, loggedIn, setShareSheetOpen, user } = useAppStore();
   const [isFollowing, setIsFollowing] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [reportModal, setReportModal] = useState(false);
@@ -37,6 +38,13 @@ export default function ActionBar({
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const followCacheRef = useRef<Record<string, boolean>>({});
   const saveCacheRef = useRef<Record<string, boolean>>({});
+  const creatorAvatarSource = currentVideo
+    ? (
+      currentVideo.user_id === user?.id
+        ? ((user?.avatar_url || currentVideo.avatar_url) ? { uri: user?.avatar_url || currentVideo.avatar_url || '' } : DEFAULT_AVATAR)
+        : (currentVideo.avatar_url ? { uri: currentVideo.avatar_url } : DEFAULT_AVATAR)
+    )
+    : DEFAULT_AVATAR;
 
   useEffect(() => {
     if (!currentVideo) {
@@ -119,11 +127,14 @@ export default function ActionBar({
 
   const openCreator = () => {
     if (!currentVideo) return;
+    const resolvedAvatarUrl = currentVideo.user_id === user?.id
+      ? (user?.avatar_url || currentVideo.avatar_url || null)
+      : (currentVideo.avatar_url || null);
     onNav('CreatorProfile', {
       userId: currentVideo.user_id,
       username: currentVideo.username,
       fullName: currentVideo.full_name,
-      avatarUrl: currentVideo.avatar_url,
+      avatarUrl: resolvedAvatarUrl,
     });
   };
 
@@ -133,67 +144,64 @@ export default function ActionBar({
         <View style={styles.actions}>
           {/* Like / Dislike arrows */}
           <View style={styles.arrows}>
-            <TouchableOpacity style={styles.arrowBtn} onPress={onLike}>
+            <AppPressable style={styles.arrowBtn} onPress={onLike}>
               <Ionicons name="chevron-up" size={36} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.arrowBtn} onPress={onDislike}>
+            </AppPressable>
+            <AppPressable style={styles.arrowBtn} onPress={onDislike}>
               <Ionicons name="chevron-down" size={36} color="#fff" />
-            </TouchableOpacity>
+            </AppPressable>
           </View>
 
           {/* Social buttons */}
           <View style={styles.social}>
             {/* Creator avatar */}
-            <TouchableOpacity style={styles.creatorRow} onPress={openCreator}>
-              <Image
-                source={currentVideo?.avatar_url ? { uri: currentVideo.avatar_url } : DEFAULT_AVATAR}
-                style={styles.creatorAvatar}
-              />
+            <AppPressable style={styles.creatorRow} onPress={openCreator}>
+              <Image source={creatorAvatarSource} style={styles.creatorAvatar} />
               <Text style={styles.creatorName} numberOfLines={1}>
                 {currentVideo?.username ? '@' + currentVideo.username : 'YOU'}
               </Text>
-            </TouchableOpacity>
+            </AppPressable>
 
             {/* Follow */}
-            <TouchableOpacity style={styles.actionBtn} onPress={doFollow}>
+            <AppPressable style={styles.actionBtn} onPress={doFollow}>
               <Ionicons
                 name={isFollowing ? 'person-remove' : 'person-add'}
                 size={24}
                 color={isFollowing ? AppColors.accentPrimary : '#fff'}
               />
               <Text style={styles.actionLabel}>Follow</Text>
-            </TouchableOpacity>
+            </AppPressable>
 
             {/* Save */}
-            <TouchableOpacity style={styles.actionBtn} onPress={doSave}>
+            <AppPressable style={styles.actionBtn} onPress={doSave}>
               <Ionicons
                 name={isSaved ? 'bookmark' : 'bookmark-outline'}
                 size={24}
                 color={isSaved ? AppColors.accentPrimary : '#fff'}
               />
               <Text style={styles.actionLabel}>Save</Text>
-            </TouchableOpacity>
+            </AppPressable>
 
             {/* Comments */}
-            <TouchableOpacity style={styles.actionBtn} onPress={onOpenComments}>
+            <AppPressable style={styles.actionBtn} onPress={onOpenComments}>
               <Ionicons name="chatbubble-outline" size={24} color="#fff" />
               <Text style={styles.actionLabel}>Comments</Text>
-            </TouchableOpacity>
+            </AppPressable>
 
             {/* Share */}
-            <TouchableOpacity style={styles.actionBtn} onPress={() => setShareSheetOpen(true)}>
+            <AppPressable style={styles.actionBtn} onPress={() => setShareSheetOpen(true)}>
               <Ionicons name="share-social-outline" size={24} color="#fff" />
               <Text style={styles.actionLabel}>Share</Text>
-            </TouchableOpacity>
+            </AppPressable>
           </View>
         </View>
       )}
 
       {showReport && (
-        <TouchableOpacity style={styles.reportBtn} onPress={() => setReportModal(true)}>
+        <AppPressable style={styles.reportBtn} onPress={() => setReportModal(true)}>
           <Ionicons name="flag-outline" size={20} color="#888" />
           <Text style={styles.reportLabel}>Report</Text>
-        </TouchableOpacity>
+        </AppPressable>
       )}
 
       {/* Report modal */}
@@ -205,13 +213,13 @@ export default function ActionBar({
             <Text style={styles.fieldLabel}>Reason</Text>
             <ScrollView horizontal={false} style={styles.reasonList}>
               {REPORT_REASONS.map((r) => (
-                <TouchableOpacity
+                <AppPressable
                   key={r}
                   style={[styles.reasonItem, reportReason === r && styles.reasonItemActive]}
                   onPress={() => setReportReason(r)}
                 >
                   <Text style={[styles.reasonText, reportReason === r && styles.reasonTextActive]}>{r}</Text>
-                </TouchableOpacity>
+                </AppPressable>
               ))}
             </ScrollView>
 
@@ -226,14 +234,14 @@ export default function ActionBar({
             />
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity
+              <AppPressable
                 style={styles.cancelBtn}
                 onPress={() => setReportModal(false)}
                 disabled={reportSubmitting}
               >
                 <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </AppPressable>
+              <AppPressable
                 style={[styles.submitBtn, (!reportReason || reportSubmitting) && styles.submitBtnDisabled]}
                 onPress={doReport}
                 disabled={reportSubmitting || !reportReason}
@@ -241,7 +249,7 @@ export default function ActionBar({
                 <Text style={styles.submitBtnText}>
                   {reportSubmitting ? 'Reporting...' : 'Report Video'}
                 </Text>
-              </TouchableOpacity>
+              </AppPressable>
             </View>
           </View>
         </View>

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { User, Video } from '../types';
-import { apiFetch, normalizeMediaUrl } from '../services/api';
+import { apiFetch, getVideoThumbnailUrl, normalizeMediaUrl } from '../services/api';
 import { storage } from '../services/storage';
 
 const STORAGE_USER_KEY = 'ts_user';
@@ -60,9 +60,17 @@ const normalizeUserObject = (userObject: User): User => ({
 const normalizeVideoObject = (videoObject: Video): Video => ({
   ...videoObject,
   file_url: normalizeMediaUrl(videoObject.file_url) || '',
-  thumbnail_url: normalizeMediaUrl(videoObject.thumbnail_url) || null,
+  thumbnail_url: getVideoThumbnailUrl(videoObject.thumbnail_url, videoObject.file_url) || null,
   avatar_url: normalizeMediaUrl(videoObject.avatar_url) || null,
 });
+
+const syncUserAvatarInVideos = (videos: Video[], userId: string, avatarUrl: string | null) => (
+  videos.map((videoItem) => (
+    videoItem.user_id === userId
+      ? { ...videoItem, avatar_url: avatarUrl }
+      : videoItem
+  ))
+);
 
 export const useAppStore = create<AppStoreState>((set, get) => ({
   loggedIn: false,
@@ -72,7 +80,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   feedVideos: [],
   feedIndex: 0,
   currentVideo: null,
-  feedMuted: true,
+  feedMuted: false,
   feedCategory: '',
   feedSearchText: '',
   feedCreatorContext: null,
@@ -87,14 +95,29 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   setUser: async (nextUser) => {
     const normalizedUser = normalizeUserObject(nextUser);
     await storage.setItem(STORAGE_USER_KEY, JSON.stringify(normalizedUser));
-    set({ user: normalizedUser, loggedIn: true });
+    set((state) => ({
+      user: normalizedUser,
+      loggedIn: true,
+      feedVideos: syncUserAvatarInVideos(state.feedVideos, normalizedUser.id, normalizedUser.avatar_url),
+      currentVideo: state.currentVideo && state.currentVideo.user_id === normalizedUser.id
+        ? { ...state.currentVideo, avatar_url: normalizedUser.avatar_url }
+        : state.currentVideo,
+    }));
   },
 
   setSession: async (nextUser, authToken) => {
     const normalizedUser = normalizeUserObject(nextUser);
     await storage.setItem(STORAGE_USER_KEY, JSON.stringify(normalizedUser));
     await storage.setItem(STORAGE_TOKEN_KEY, authToken);
-    set({ user: normalizedUser, token: authToken, loggedIn: true });
+    set((state) => ({
+      user: normalizedUser,
+      token: authToken,
+      loggedIn: true,
+      feedVideos: syncUserAvatarInVideos(state.feedVideos, normalizedUser.id, normalizedUser.avatar_url),
+      currentVideo: state.currentVideo && state.currentVideo.user_id === normalizedUser.id
+        ? { ...state.currentVideo, avatar_url: normalizedUser.avatar_url }
+        : state.currentVideo,
+    }));
   },
 
   restoreSession: async () => {

@@ -1646,6 +1646,11 @@ export default function Home({ onNav }: Props) {
           : `Search "${activeSearch}"`;
   const canQuickReset = hasScopedFeed && !activeSearch;
   const browseAllSelected = browseCreatorCategories.length === TALENT_TYPES.length;
+  const resolvedCurrentVideoAvatarUrl = currentVideo
+    ? (currentVideo.user_id === user?.id
+      ? (user?.avatar_url || currentVideo.avatar_url || null)
+      : (currentVideo.avatar_url || null))
+    : null;
 
   const openCreator = () => {
     if (!currentVideo) return;
@@ -1653,7 +1658,7 @@ export default function Home({ onNav }: Props) {
       userId: currentVideo.user_id,
       username: currentVideo.username,
       fullName: currentVideo.full_name,
-      avatarUrl: currentVideo.avatar_url,
+      avatarUrl: resolvedCurrentVideoAvatarUrl,
       isFollowing: currentVideo.is_following_author,
     });
   };
@@ -1939,7 +1944,7 @@ export default function Home({ onNav }: Props) {
         </div>
         <div className="vtrow-user" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
           <div className="uav-sm" onClick={openCreator} style={{ cursor: 'pointer' }}>
-            <img src={currentVideo?.avatar_url || DEFAULT_AVATAR}
+            <img src={resolvedCurrentVideoAvatarUrl || DEFAULT_AVATAR}
               style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
               onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_AVATAR; }}
               alt="" />

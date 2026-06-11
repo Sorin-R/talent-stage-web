@@ -4,6 +4,14 @@ import { apiFetch, normalizeMediaUrl } from '../services/api';
 
 const DEFAULT_AVATAR = '/icons/account.png';
 
+const syncUserAvatarInVideos = (videos: Video[], userId: string, avatarUrl: string | null) => (
+  videos.map((videoItem) => (
+    videoItem.user_id === userId
+      ? { ...videoItem, avatar_url: avatarUrl }
+      : videoItem
+  ))
+);
+
 interface AppState {
   // Auth
   loggedIn: boolean;
@@ -61,10 +69,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   uploadProgress: 0,
 
   setUser: (u: User) => {
-    // Keep legacy avatar values compatible across localhost/LAN setups
-    u.avatar_url = normalizeMediaUrl(u.avatar_url) || null;
-    set({ user: u, loggedIn: true });
-    localStorage.setItem('ts_user', JSON.stringify(u));
+    const normalizedUser = {
+      ...u,
+      avatar_url: normalizeMediaUrl(u.avatar_url) || null,
+    };
+    set((state) => ({
+      user: normalizedUser,
+      loggedIn: true,
+      feedVideos: syncUserAvatarInVideos(state.feedVideos, normalizedUser.id, normalizedUser.avatar_url),
+      currentVideo: state.currentVideo && state.currentVideo.user_id === normalizedUser.id
+        ? { ...state.currentVideo, avatar_url: normalizedUser.avatar_url }
+        : state.currentVideo,
+    }));
+    localStorage.setItem('ts_user', JSON.stringify(normalizedUser));
   },
 
   logout: () => {
