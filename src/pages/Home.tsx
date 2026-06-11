@@ -77,6 +77,7 @@ export default function Home({ onNav }: Props) {
   const [creatorResults, setCreatorResults] = useState<UserWithStats[]>([]);
   const [creatorSearchOpen, setCreatorSearchOpen] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [currentCreatorAvatarUrl, setCurrentCreatorAvatarUrl] = useState<string | null>(null);
 
   // Band (strip) animation — current + next video move as one continuous strip
   const [stripOffset, setStripOffset]   = useState(0);                        // translateY in px
@@ -118,6 +119,7 @@ export default function Home({ onNav }: Props) {
   const reactionKey       = useRef(0);
   const searchTimer       = useRef<ReturnType<typeof setTimeout> | null>(null);
   const creatorSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const creatorAvatarCacheRef = useRef<Record<string, string | null>>({});
   const preloadWaitTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const snapBackTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const postCommitCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1647,15 +1649,61 @@ export default function Home({ onNav }: Props) {
           : `Search "${activeSearch}"`;
   const canQuickReset = hasScopedFeed && !activeSearch;
   const browseAllSelected = browseCreatorCategories.length === TALENT_TYPES.length;
-  const resolvedCurrentVideoAvatarUrl = currentVideo
-    ? resolveVideoAvatarSrc(
-      currentVideo.user_id,
-      currentVideo.avatar_url,
-      user?.id,
-      user?.avatar_url,
-      null,
-    )
-    : null;
+  const resolvedCurrentVideoAvatarUrl = currentCreatorAvatarUrl
+    || (currentVideo
+      ? (String(currentVideo.user_id) === String(user?.id)
+        ? resolveVideoAvatarSrc(
+          currentVideo.user_id,
+          currentVideo.avatar_url,
+          user?.id,
+          user?.avatar_url,
+          null,
+        )
+        : null)
+      : null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const currentUserId = String(user?.id || '');
+    const currentVideoUserId = String(currentVideo?.user_id || '');
+
+    if (!currentVideoUserId) {
+      setCurrentCreatorAvatarUrl(null);
+      return;
+    }
+
+    if (currentUserId && currentVideoUserId === currentUserId) {
+      const avatar = resolveVideoAvatarSrc(
+        currentVideo?.user_id || null,
+        currentVideo?.avatar_url || null,
+        user?.id || null,
+        user?.avatar_url || null,
+        null,
+      );
+      creatorAvatarCacheRef.current[currentVideoUserId] = avatar;
+      setCurrentCreatorAvatarUrl(avatar);
+      return;
+    }
+
+    const cachedAvatar = creatorAvatarCacheRef.current[currentVideoUserId];
+    if (cachedAvatar !== undefined) {
+      setCurrentCreatorAvatarUrl(cachedAvatar);
+      return;
+    }
+
+    setCurrentCreatorAvatarUrl(null);
+    void (async () => {
+      const res = await apiFetch<UserWithStats>('/users/' + currentVideoUserId);
+      if (cancelled) return;
+      const liveAvatar = (res.success && res.data ? res.data.avatar_url : null) || currentVideo?.avatar_url || null;
+      creatorAvatarCacheRef.current[currentVideoUserId] = liveAvatar;
+      setCurrentCreatorAvatarUrl(liveAvatar);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentVideo?.id, currentVideo?.user_id, currentVideo?.avatar_url, user?.id, user?.avatar_url]);
 
   const openCreator = () => {
     if (!currentVideo) return;
@@ -2202,6 +2250,7 @@ export default function Home({ onNav }: Props) {
             videoVoted={videoVoted}
             showActions={false}
             showReport
+            creatorAvatarUrl={resolvedCurrentVideoAvatarUrl}
           />
         )}
 
@@ -2217,6 +2266,7 @@ export default function Home({ onNav }: Props) {
           videoVoted={videoVoted}
           showActions
           showReport={false}
+          creatorAvatarUrl={resolvedCurrentVideoAvatarUrl}
         />
       )}
 
