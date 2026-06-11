@@ -1648,7 +1648,7 @@ export default function Home({ onNav }: Props) {
   const browseAllSelected = browseCreatorCategories.length === TALENT_TYPES.length;
   const currentUserAvatarCache = user?.id ? localStorage.getItem('ts_avatar_' + user.id) : null;
   const resolvedCurrentVideoAvatarUrl = currentVideo
-    ? (currentVideo.user_id === user?.id
+    ? (String(currentVideo.user_id) === String(user?.id)
       ? (currentUserAvatarCache || user?.avatar_url || currentVideo.avatar_url || null)
       : (currentVideo.avatar_url || null))
     : null;

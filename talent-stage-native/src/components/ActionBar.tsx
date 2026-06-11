@@ -40,7 +40,7 @@ export default function ActionBar({
   const saveCacheRef = useRef<Record<string, boolean>>({});
   const creatorAvatarSource = currentVideo
     ? (
-      currentVideo.user_id === user?.id
+      String(currentVideo.user_id) === String(user?.id)
         ? ((user?.avatar_url || currentVideo.avatar_url) ? { uri: user?.avatar_url || currentVideo.avatar_url || '' } : DEFAULT_AVATAR)
         : (currentVideo.avatar_url ? { uri: currentVideo.avatar_url } : DEFAULT_AVATAR)
     )
@@ -127,7 +127,7 @@ export default function ActionBar({
 
   const openCreator = () => {
     if (!currentVideo) return;
-    const resolvedAvatarUrl = currentVideo.user_id === user?.id
+    const resolvedAvatarUrl = String(currentVideo.user_id) === String(user?.id)
       ? (user?.avatar_url || currentVideo.avatar_url || null)
       : (currentVideo.avatar_url || null);
     onNav('CreatorProfile', {

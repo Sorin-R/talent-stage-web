@@ -177,7 +177,7 @@ export default function ActionBar({
 
   const openCreator = () => {
     if (!currentVideo) return;
-    const resolvedAvatarUrl = currentVideo.user_id === user?.id
+    const resolvedAvatarUrl = String(currentVideo.user_id) === String(user?.id)
       ? (currentUserAvatarCache || user?.avatar_url || currentVideo.avatar_url || null)
       : (currentVideo.avatar_url || null);
     onNav('creator', {
@@ -233,7 +233,7 @@ export default function ActionBar({
             <img
               src={
                 currentVideo
-                  ? (currentVideo.user_id === user?.id
+                  ? (String(currentVideo.user_id) === String(user?.id)
                     ? (currentUserAvatarCache || user?.avatar_url || currentVideo.avatar_url || '/icons/account.png')
                     : (currentVideo.avatar_url || '/icons/account.png'))
                   : '/icons/account.png'

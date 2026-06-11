@@ -6,7 +6,7 @@ const DEFAULT_AVATAR = '/icons/account.png';
 
 const syncUserAvatarInVideos = (videos: Video[], userId: string, avatarUrl: string | null) => (
   videos.map((videoItem) => (
-    videoItem.user_id === userId
+    String(videoItem.user_id) === String(userId)
       ? { ...videoItem, avatar_url: avatarUrl }
       : videoItem
   ))
@@ -73,11 +73,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       ...u,
       avatar_url: normalizeMediaUrl(u.avatar_url) || null,
     };
+    const normalizedUserId = String(normalizedUser.id);
     set((state) => ({
       user: normalizedUser,
       loggedIn: true,
-      feedVideos: syncUserAvatarInVideos(state.feedVideos, normalizedUser.id, normalizedUser.avatar_url),
-      currentVideo: state.currentVideo && state.currentVideo.user_id === normalizedUser.id
+      feedVideos: syncUserAvatarInVideos(state.feedVideos, normalizedUserId, normalizedUser.avatar_url),
+      currentVideo: state.currentVideo && String(state.currentVideo.user_id) === normalizedUserId
         ? { ...state.currentVideo, avatar_url: normalizedUser.avatar_url }
         : state.currentVideo,
     }));

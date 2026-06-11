@@ -66,7 +66,7 @@ const normalizeVideoObject = (videoObject: Video): Video => ({
 
 const syncUserAvatarInVideos = (videos: Video[], userId: string, avatarUrl: string | null) => (
   videos.map((videoItem) => (
-    videoItem.user_id === userId
+    String(videoItem.user_id) === String(userId)
       ? { ...videoItem, avatar_url: avatarUrl }
       : videoItem
   ))
@@ -94,12 +94,13 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   setUser: async (nextUser) => {
     const normalizedUser = normalizeUserObject(nextUser);
+    const normalizedUserId = String(normalizedUser.id);
     await storage.setItem(STORAGE_USER_KEY, JSON.stringify(normalizedUser));
     set((state) => ({
       user: normalizedUser,
       loggedIn: true,
-      feedVideos: syncUserAvatarInVideos(state.feedVideos, normalizedUser.id, normalizedUser.avatar_url),
-      currentVideo: state.currentVideo && state.currentVideo.user_id === normalizedUser.id
+      feedVideos: syncUserAvatarInVideos(state.feedVideos, normalizedUserId, normalizedUser.avatar_url),
+      currentVideo: state.currentVideo && String(state.currentVideo.user_id) === normalizedUserId
         ? { ...state.currentVideo, avatar_url: normalizedUser.avatar_url }
         : state.currentVideo,
     }));
@@ -107,14 +108,15 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   setSession: async (nextUser, authToken) => {
     const normalizedUser = normalizeUserObject(nextUser);
+    const normalizedUserId = String(normalizedUser.id);
     await storage.setItem(STORAGE_USER_KEY, JSON.stringify(normalizedUser));
     await storage.setItem(STORAGE_TOKEN_KEY, authToken);
     set((state) => ({
       user: normalizedUser,
       token: authToken,
       loggedIn: true,
-      feedVideos: syncUserAvatarInVideos(state.feedVideos, normalizedUser.id, normalizedUser.avatar_url),
-      currentVideo: state.currentVideo && state.currentVideo.user_id === normalizedUser.id
+      feedVideos: syncUserAvatarInVideos(state.feedVideos, normalizedUserId, normalizedUser.avatar_url),
+      currentVideo: state.currentVideo && String(state.currentVideo.user_id) === normalizedUserId
         ? { ...state.currentVideo, avatar_url: normalizedUser.avatar_url }
         : state.currentVideo,
     }));

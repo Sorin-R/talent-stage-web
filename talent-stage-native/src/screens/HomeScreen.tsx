@@ -121,7 +121,7 @@ export default function HomeScreen() {
 
   const activeVideo = feedVideos[feedIndex] || currentVideo || null;
   const activeVideoAvatarUrl = activeVideo
-    ? (activeVideo.user_id === user?.id
+    ? (String(activeVideo.user_id) === String(user?.id)
       ? (user?.avatar_url || activeVideo.avatar_url || null)
       : (activeVideo.avatar_url || null))
     : null;
