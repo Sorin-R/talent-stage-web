@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { apiFetch } from '../services/api';
 import { toast } from './Toast';
+import { resolveVideoAvatarSrc } from '../utils/avatar';
 
 interface Props {
   onLike: () => void;
@@ -36,8 +37,6 @@ export default function ActionBar({
   const saveReqIdRef = useRef(0);
   const activeCreatorRef = useRef<string | null>(null);
   const activeVideoRef = useRef<string | null>(null);
-  const currentUserAvatarCache = user?.id ? localStorage.getItem('ts_avatar_' + user.id) : null;
-
   useEffect(() => {
     if (!currentVideo) {
       setIsFollowing(false);
@@ -177,9 +176,13 @@ export default function ActionBar({
 
   const openCreator = () => {
     if (!currentVideo) return;
-    const resolvedAvatarUrl = String(currentVideo.user_id) === String(user?.id)
-      ? (currentUserAvatarCache || user?.avatar_url || currentVideo.avatar_url || null)
-      : (currentVideo.avatar_url || null);
+    const resolvedAvatarUrl = resolveVideoAvatarSrc(
+      currentVideo.user_id,
+      currentVideo.avatar_url,
+      user?.id,
+      user?.avatar_url,
+      null,
+    );
     onNav('creator', {
       userId: currentVideo.user_id,
       username: currentVideo.username,
@@ -231,13 +234,15 @@ export default function ActionBar({
         >
           <div className="r-user-avatar">
             <img
-              src={
-                currentVideo
-                  ? (String(currentVideo.user_id) === String(user?.id)
-                    ? (currentUserAvatarCache || user?.avatar_url || currentVideo.avatar_url || '/icons/account.png')
-                    : (currentVideo.avatar_url || '/icons/account.png'))
-                  : '/icons/account.png'
-              }
+              src={currentVideo
+                ? resolveVideoAvatarSrc(
+                  currentVideo.user_id,
+                  currentVideo.avatar_url,
+                  user?.id,
+                  user?.avatar_url,
+                  '/icons/account.png',
+                )
+                : '/icons/account.png'}
               alt="User avatar"
               onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/icons/account.png'; }}
             />

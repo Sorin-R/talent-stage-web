@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react
 import { useAppStore, DEFAULT_AVATAR } from '../store/useAppStore';
 import { apiFetch } from '../services/api';
 import { toast } from '../components/Toast';
+import { resolveVideoAvatarSrc } from '../utils/avatar';
 import { useSwipe } from '../hooks/useSwipe';
 import { useMomentumScroll } from '../hooks/useMomentumScroll';
 import ActionBar from '../components/ActionBar';
@@ -1646,11 +1647,14 @@ export default function Home({ onNav }: Props) {
           : `Search "${activeSearch}"`;
   const canQuickReset = hasScopedFeed && !activeSearch;
   const browseAllSelected = browseCreatorCategories.length === TALENT_TYPES.length;
-  const currentUserAvatarCache = user?.id ? localStorage.getItem('ts_avatar_' + user.id) : null;
   const resolvedCurrentVideoAvatarUrl = currentVideo
-    ? (String(currentVideo.user_id) === String(user?.id)
-      ? (currentUserAvatarCache || user?.avatar_url || currentVideo.avatar_url || null)
-      : (currentVideo.avatar_url || null))
+    ? resolveVideoAvatarSrc(
+      currentVideo.user_id,
+      currentVideo.avatar_url,
+      user?.id,
+      user?.avatar_url,
+      null,
+    )
     : null;
 
   const openCreator = () => {

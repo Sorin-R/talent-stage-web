@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAppStore, DEFAULT_AVATAR } from '../store/useAppStore';
 import { apiFetch } from '../services/api';
 import { toast } from '../components/Toast';
+import { resolveProfileAvatarSrc } from '../utils/avatar';
 import type { User } from '../types';
 
 interface Strike {
@@ -196,7 +197,7 @@ export default function Account({ onNav }: Props) {
 
   const getAvatarSrc = () => {
     if (!user) return DEFAULT_AVATAR;
-    return localStorage.getItem('ts_avatar_' + user.id) || user.avatar_url || DEFAULT_AVATAR;
+    return resolveProfileAvatarSrc(user.id, user.avatar_url);
   };
 
   const pickAvatar = () => avatarInputRef.current?.click();
