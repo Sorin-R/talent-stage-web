@@ -36,6 +36,7 @@ export default function ActionBar({
   const saveReqIdRef = useRef(0);
   const activeCreatorRef = useRef<string | null>(null);
   const activeVideoRef = useRef<string | null>(null);
+  const currentUserAvatarCache = user?.id ? localStorage.getItem('ts_avatar_' + user.id) : null;
 
   useEffect(() => {
     if (!currentVideo) {
@@ -177,7 +178,7 @@ export default function ActionBar({
   const openCreator = () => {
     if (!currentVideo) return;
     const resolvedAvatarUrl = currentVideo.user_id === user?.id
-      ? (user?.avatar_url || currentVideo.avatar_url || null)
+      ? (currentUserAvatarCache || user?.avatar_url || currentVideo.avatar_url || null)
       : (currentVideo.avatar_url || null);
     onNav('creator', {
       userId: currentVideo.user_id,
@@ -233,7 +234,7 @@ export default function ActionBar({
               src={
                 currentVideo
                   ? (currentVideo.user_id === user?.id
-                    ? (user?.avatar_url || currentVideo.avatar_url || '/icons/account.png')
+                    ? (currentUserAvatarCache || user?.avatar_url || currentVideo.avatar_url || '/icons/account.png')
                     : (currentVideo.avatar_url || '/icons/account.png'))
                   : '/icons/account.png'
               }
