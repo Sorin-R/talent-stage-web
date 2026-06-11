@@ -121,10 +121,11 @@ export default function HomeScreen() {
 
   const activeVideo = feedVideos[feedIndex] || currentVideo || null;
   const activeVideoAvatarUrl = activeVideo
-    ? (String(activeVideo.user_id) === String(user?.id)
-      ? (user?.avatar_url || activeVideo.avatar_url || null)
-      : (activeVideo.avatar_url || null))
+    ? (activeVideo.avatar_url || (String(activeVideo.user_id) === String(user?.id) ? user?.avatar_url : null))
     : null;
+  const activeVideoAvatarSource = activeVideoAvatarUrl
+    ? { uri: activeVideoAvatarUrl }
+    : TRANSPARENT_AVATAR_SOURCE;
   const commentBarBottom = 10;
   const topHeaderOffset = insets.top + 8;
   const titleRowOffset = insets.top + 75;
@@ -457,11 +458,12 @@ export default function HomeScreen() {
   ]);
 
   useEffect(() => {
+    if (!isScreenFocused) return undefined;
     const searchDebounceTimer = setTimeout(() => {
       void loadFeedVideos();
     }, 280);
     return () => clearTimeout(searchDebounceTimer);
-  }, [loadFeedVideos]);
+  }, [isScreenFocused, loadFeedVideos]);
 
   useEffect(() => {
     if (!feedVideos.length) return;
@@ -1109,7 +1111,7 @@ export default function HomeScreen() {
           }}
         >
           <View style={styles.titleUserAvatarWrap}>
-            <Image source={TRANSPARENT_AVATAR_SOURCE} style={styles.titleUserAvatar} />
+            <Image source={activeVideoAvatarSource} style={styles.titleUserAvatar} />
           </View>
           <Text style={styles.titleUserName} numberOfLines={1}>@{activeVideo?.username || 'user'}</Text>
         </AppPressable>

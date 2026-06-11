@@ -177,12 +177,9 @@ export default function AccountScreen() {
     }
   }, [user]);
 
-  const getAvatarUri = () => {
-    if (!user) return '';
-    return '';
-  };
+  const getAvatarUri = () => user?.avatar_url || '';
 
-  const isRealAvatar = false;
+  const isRealAvatar = !!user?.avatar_url;
 
   const pickAvatar = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -345,7 +342,7 @@ export default function AccountScreen() {
               </View>
             ) : (
               <Image
-                source={{ uri: getAvatarUri() }}
+                source={getAvatarUri() ? { uri: getAvatarUri() } : DEFAULT_AVATAR_SOURCE}
                 style={styles.avatarImage}
                 defaultSource={DEFAULT_AVATAR_SOURCE}
               />
