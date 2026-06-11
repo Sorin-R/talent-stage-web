@@ -54,14 +54,12 @@ interface AppStoreState {
 
 const normalizeUserObject = (userObject: User): User => ({
   ...userObject,
-  avatar_url: normalizeMediaUrl(userObject.avatar_url) || null,
 });
 
 const normalizeVideoObject = (videoObject: Video): Video => ({
   ...videoObject,
   file_url: normalizeMediaUrl(videoObject.file_url) || '',
   thumbnail_url: getVideoThumbnailUrl(videoObject.thumbnail_url, videoObject.file_url) || null,
-  avatar_url: normalizeMediaUrl(videoObject.avatar_url) || null,
 });
 
 const syncUserAvatarInVideos = (videos: Video[], userId: string, avatarUrl: string | null) => (

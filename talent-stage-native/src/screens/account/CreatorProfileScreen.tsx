@@ -275,7 +275,7 @@ export default function CreatorProfileScreen() {
       <View style={styles.headerContainer}>
         <View style={styles.avatarBorder}>
           <Image
-            source={DEFAULT_AVATAR_SOURCE}
+            source={creatorUser?.avatar_url ? { uri: creatorUser.avatar_url } : DEFAULT_AVATAR_SOURCE}
             style={styles.avatarImage}
           />
         </View>

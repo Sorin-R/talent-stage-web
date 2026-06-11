@@ -39,7 +39,11 @@ export default function ActionBar({
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const followCacheRef = useRef<Record<string, boolean>>({});
   const saveCacheRef = useRef<Record<string, boolean>>({});
-  const creatorAvatarSource = DEFAULT_AVATAR;
+  const creatorAvatarSource = currentVideo?.avatar_url
+    ? { uri: currentVideo.avatar_url }
+    : (user?.id && currentVideo && String(currentVideo.user_id) === String(user.id) && user.avatar_url
+      ? { uri: user.avatar_url }
+      : DEFAULT_AVATAR);
 
   const doFollow = async () => {
     if (!loggedIn) { toast('Sign in to follow'); onNav('Login'); return; }

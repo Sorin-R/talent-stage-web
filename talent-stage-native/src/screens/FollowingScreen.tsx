@@ -92,7 +92,7 @@ export default function FollowingScreen() {
             <View style={styles.userRow}>
               <AppPressable onPress={() => goToUser(u)}>
                 <Image
-                  source={DEFAULT_AVATAR_SOURCE}
+                  source={u.avatar_url ? { uri: u.avatar_url } : DEFAULT_AVATAR_SOURCE}
                   style={styles.userAvatar}
                 />
               </AppPressable>

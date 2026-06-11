@@ -168,7 +168,7 @@ export default function Comments({ videoId, open, onClose }: Props) {
     return (
       <View style={[styles.commentRow, { marginLeft: depth * 18 }]}>
         <Image
-          source={DEFAULT_AVATAR}
+          source={c.avatar_url ? { uri: c.avatar_url } : DEFAULT_AVATAR}
           style={styles.avatar}
         />
         <View style={styles.commentBody}>
