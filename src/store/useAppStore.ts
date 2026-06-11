@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import type { User, Video } from '../types';
-import { apiFetch, normalizeMediaUrl } from '../services/api';
+import { apiFetch } from '../services/api';
 
-const DEFAULT_AVATAR = '/icons/account.png';
+const DEFAULT_AVATAR = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="1" height="1"%3E%3C/svg%3E';
 
 const syncUserAvatarInVideos = (videos: Video[], userId: string, avatarUrl: string | null) => (
   videos.map((videoItem) => (
@@ -71,7 +71,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setUser: (u: User) => {
     const normalizedUser = {
       ...u,
-      avatar_url: normalizeMediaUrl(u.avatar_url) || null,
+      avatar_url: null,
     };
     const normalizedUserId = String(normalizedUser.id);
     set((state) => ({

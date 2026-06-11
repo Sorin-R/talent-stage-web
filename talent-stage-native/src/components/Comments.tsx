@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, FlatList, Image, Modal,
+  View, Text, TextInput, FlatList, Image, Modal,
   StyleSheet, KeyboardAvoidingView, Platform, Alert, ScrollView,
 } from 'react-native';
+import AppPressable from './AppPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '../store/useAppStore';
 import { apiFetch } from '../services/api';
@@ -10,8 +11,9 @@ import { toast } from './Toast';
 import { AppColors } from '../theme/colors';
 import { REPORT_REASONS } from './ShareSheet';
 import type { Comment as CommentType, PaginatedResponse } from '../types';
+import { TRANSPARENT_AVATAR_SOURCE } from '../constants/avatar';
 
-const DEFAULT_AVATAR = require('../../assets/icon.png');
+const DEFAULT_AVATAR = TRANSPARENT_AVATAR_SOURCE;
 
 interface Props {
   videoId: string | null;
@@ -166,7 +168,7 @@ export default function Comments({ videoId, open, onClose }: Props) {
     return (
       <View style={[styles.commentRow, { marginLeft: depth * 18 }]}>
         <Image
-          source={c.avatar_url ? { uri: c.avatar_url } : DEFAULT_AVATAR}
+          source={DEFAULT_AVATAR}
           style={styles.avatar}
         />
         <View style={styles.commentBody}>
@@ -175,7 +177,7 @@ export default function Comments({ videoId, open, onClose }: Props) {
             {c.body}
           </Text>
           <View style={styles.commentMeta}>
-            <TouchableOpacity
+            <AppPressable
               style={styles.metaBtn}
               onPress={() => void toggleCommentLike(c.id)}
               disabled={!!likeLoading[c.id]}
@@ -183,28 +185,28 @@ export default function Comments({ videoId, open, onClose }: Props) {
               <Text style={[styles.metaText, liked && { color: AppColors.danger }]}>
                 {liked ? '❤' : '♡'} {Number(c.likes_count || 0)}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.metaBtn} onPress={() => setReplyTo(c)}>
+            </AppPressable>
+            <AppPressable style={styles.metaBtn} onPress={() => setReplyTo(c)}>
               <Text style={styles.metaText}>Reply</Text>
-            </TouchableOpacity>
+            </AppPressable>
             {replies.length > 0 && (
               <Text style={styles.metaCount}>{replies.length} repl{replies.length === 1 ? 'y' : 'ies'}</Text>
             )}
           </View>
         </View>
         {own ? (
-          <TouchableOpacity onPress={() => deleteOwnComment(c.id)} disabled={!!deleteLoading[c.id]}>
+          <AppPressable onPress={() => deleteOwnComment(c.id)} disabled={!!deleteLoading[c.id]}>
             <Ionicons name="trash-outline" size={16} color="#8d8d8d" />
-          </TouchableOpacity>
+          </AppPressable>
         ) : (
-          <TouchableOpacity onPress={() => {
+          <AppPressable onPress={() => {
             setReportCommentId(c.id);
             setReportReason('');
             setReportDesc('');
             setReportModal(true);
           }}>
             <Ionicons name="flag-outline" size={16} color="#8d8d8d" />
-          </TouchableOpacity>
+          </AppPressable>
         )}
       </View>
     );
@@ -216,12 +218,12 @@ export default function Comments({ videoId, open, onClose }: Props) {
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <TouchableOpacity style={styles.topDismiss} activeOpacity={1} onPress={onClose} />
+        <AppPressable style={styles.topDismiss} onPress={onClose} />
         <View style={styles.drawer}>
-          <TouchableOpacity style={styles.handleArea} onPress={onClose}>
+          <AppPressable style={styles.handleArea} onPress={onClose}>
             <View style={styles.handle} />
             <Text style={styles.closeLabel}>CLOSE</Text>
-          </TouchableOpacity>
+          </AppPressable>
 
           <FlatList
             data={flatData}
@@ -243,13 +245,13 @@ export default function Comments({ videoId, open, onClose }: Props) {
               onSubmitEditing={addComment}
             />
             {replyTo && (
-              <TouchableOpacity onPress={() => setReplyTo(null)} style={styles.cancelReply}>
+              <AppPressable onPress={() => setReplyTo(null)} style={styles.cancelReply}>
                 <Text style={styles.cancelReplyText}>Cancel</Text>
-              </TouchableOpacity>
+              </AppPressable>
             )}
-            <TouchableOpacity onPress={addComment} style={styles.sendBtn}>
+            <AppPressable onPress={addComment} style={styles.sendBtn}>
               <Ionicons name="send" size={20} color={AppColors.accentPrimary} />
-            </TouchableOpacity>
+            </AppPressable>
           </View>
         </View>
 
@@ -260,13 +262,13 @@ export default function Comments({ videoId, open, onClose }: Props) {
               <Text style={styles.reportTitle}>Report Comment</Text>
               <ScrollView style={{ maxHeight: 200, marginBottom: 12 }}>
                 {REPORT_REASONS.map((r) => (
-                  <TouchableOpacity
+                  <AppPressable
                     key={r}
                     style={[styles.reasonItem, reportReason === r && styles.reasonActive]}
                     onPress={() => setReportReason(r)}
                   >
                     <Text style={[styles.reasonText, reportReason === r && { color: '#fff', fontWeight: '600' }]}>{r}</Text>
-                  </TouchableOpacity>
+                  </AppPressable>
                 ))}
               </ScrollView>
               <TextInput
@@ -278,10 +280,10 @@ export default function Comments({ videoId, open, onClose }: Props) {
                 multiline
               />
               <View style={styles.reportButtons}>
-                <TouchableOpacity style={styles.reportCancel} onPress={() => setReportModal(false)}>
+                <AppPressable style={styles.reportCancel} onPress={() => setReportModal(false)}>
                   <Text style={{ color: 'rgba(255,255,255,0.6)', fontWeight: '600' }}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                </AppPressable>
+                <AppPressable
                   style={[styles.reportSubmit, (!reportReason || reportSubmitting) && { opacity: 0.5 }]}
                   onPress={submitReport}
                   disabled={!reportReason || reportSubmitting}
@@ -289,7 +291,7 @@ export default function Comments({ videoId, open, onClose }: Props) {
                   <Text style={{ color: '#fff', fontWeight: '700' }}>
                     {reportSubmitting ? 'Reporting...' : 'Report'}
                   </Text>
-                </TouchableOpacity>
+                </AppPressable>
               </View>
             </View>
           </View>

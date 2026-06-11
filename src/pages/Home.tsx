@@ -1600,7 +1600,7 @@ export default function Home({ onNav }: Props) {
       userId: u.id,
       username: u.username,
       fullName: u.full_name || u.username,
-      avatarUrl: u.avatar_url,
+      avatarUrl: null,
       isFollowing: !!u.is_followed,
     });
   }, [onNav]);
@@ -1711,7 +1711,7 @@ export default function Home({ onNav }: Props) {
       userId: currentVideo.user_id,
       username: currentVideo.username,
       fullName: currentVideo.full_name,
-      avatarUrl: resolvedCurrentVideoAvatarUrl,
+      avatarUrl: null,
       isFollowing: currentVideo.is_following_author,
     });
   };
@@ -1907,7 +1907,7 @@ export default function Home({ onNav }: Props) {
               >
                 <div className="creator-search-avatar">
                   <img
-                    src={u.avatar_url || DEFAULT_AVATAR}
+                    src={DEFAULT_AVATAR}
                     alt=""
                     onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR; }}
                   />
@@ -1997,7 +1997,7 @@ export default function Home({ onNav }: Props) {
         </div>
         <div className="vtrow-user" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
           <div className="uav-sm" onClick={openCreator} style={{ cursor: 'pointer' }}>
-            <img src={resolvedCurrentVideoAvatarUrl || DEFAULT_AVATAR}
+            <img src={DEFAULT_AVATAR}
               style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
               onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_AVATAR; }}
               alt="" />
