@@ -36,10 +36,21 @@ export default function Upload({ onNav, openToken }: Props) {
   const [searchTerm, setSearchTerm] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const streamFinalizeAttemptsById = useRef<Map<string, number>>(new Map());
+  const streamFinalizeRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (loggedIn && user) loadMyVideos();
   }, [loggedIn, user]);
+
+  useEffect(() => {
+    return () => {
+      if (streamFinalizeRetryTimerRef.current) {
+        clearTimeout(streamFinalizeRetryTimerRef.current);
+        streamFinalizeRetryTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // When Upload is requested from bottom nav again, always return to main Upload screen.
@@ -48,8 +59,70 @@ export default function Upload({ onNav, openToken }: Props) {
 
   const loadMyVideos = async () => {
     if (!user) return;
+    if (streamFinalizeRetryTimerRef.current) {
+      clearTimeout(streamFinalizeRetryTimerRef.current);
+      streamFinalizeRetryTimerRef.current = null;
+    }
     const data = await apiFetch<PaginatedResponse<Video>>('/videos/user/' + user.id);
-    if (data.success && data.data) setMyVideos(data.data.items || []);
+    if (!data.success || !data.data) return;
+
+    const loadedVideos = data.data.items || [];
+    setMyVideos(loadedVideos);
+
+    loadedVideos.forEach((videoItem) => {
+      const maybeStream = /videodelivery\.net|cfstream:/i.test(String(videoItem.file_url || ''));
+      const shouldKeepRetryState = maybeStream && (!Boolean(videoItem.is_public) || !String(videoItem.thumbnail_url || '').trim());
+      if (!shouldKeepRetryState) {
+        streamFinalizeAttemptsById.current.delete(videoItem.id);
+      }
+    });
+
+    const pendingStreamVideos = loadedVideos
+      .filter((videoItem) => {
+        const maybeStream = /videodelivery\.net|cfstream:/i.test(String(videoItem.file_url || ''));
+        const missingThumb = !String(videoItem.thumbnail_url || '').trim();
+        const hiddenVideo = !Boolean(videoItem.is_public);
+        const attempts = streamFinalizeAttemptsById.current.get(videoItem.id) || 0;
+        const retryable = attempts < 6;
+        return maybeStream && retryable && (hiddenVideo || missingThumb);
+      })
+      .slice(0, 8);
+
+    if (!pendingStreamVideos.length) return;
+
+    pendingStreamVideos.forEach((videoItem) => {
+      const attempts = streamFinalizeAttemptsById.current.get(videoItem.id) || 0;
+      streamFinalizeAttemptsById.current.set(videoItem.id, attempts + 1);
+    });
+
+    if (streamFinalizeRetryTimerRef.current) {
+      clearTimeout(streamFinalizeRetryTimerRef.current);
+    }
+    void (async () => {
+      let didUpdateAtLeastOne = false;
+      for (const videoItem of pendingStreamVideos) {
+        const completeResponse = await apiFetch<{ ready_to_stream?: boolean }>('/videos/stream/complete', {
+          method: 'POST',
+          body: JSON.stringify({
+            video_id: videoItem.id,
+            publish: true,
+          }),
+        });
+        if (completeResponse.success) didUpdateAtLeastOne = true;
+        await wait(250);
+      }
+
+      const shouldRetry = pendingStreamVideos.some((videoItem) => {
+        const attempts = streamFinalizeAttemptsById.current.get(videoItem.id) || 0;
+        return attempts < 6;
+      });
+
+      if (didUpdateAtLeastOne || shouldRetry) {
+        streamFinalizeRetryTimerRef.current = setTimeout(() => {
+          void loadMyVideos();
+        }, didUpdateAtLeastOne ? 1200 : 2200);
+      }
+    })();
   };
 
   const resetPostDraft = () => {
@@ -547,9 +620,41 @@ export default function Upload({ onNav, openToken }: Props) {
         ) : visibleVideos.map((v, i) => (
           <div className={`vgi ${BG[i % BG.length]}`} key={v.id} style={{ position: 'relative', cursor: 'pointer' }}
             onClick={() => playFromGrid(i)}>
-            <video src={v.file_url} preload="metadata" muted playsInline
-              style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0, pointerEvents: 'none' }}
-              onLoadedMetadata={(e) => { (e.target as HTMLVideoElement).currentTime = 1; }} />
+            {v.file_url ? (
+              <video
+                src={v.file_url}
+                preload="metadata"
+                muted
+                playsInline
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  position: 'absolute',
+                  inset: 0,
+                  pointerEvents: 'none',
+                }}
+                onLoadedMetadata={(e) => { (e.target as HTMLVideoElement).currentTime = 1; }}
+              />
+            ) : null}
+            {v.thumbnail_url ? (
+              <img
+                src={v.thumbnail_url}
+                alt=""
+                loading="lazy"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  position: 'absolute',
+                  inset: 0,
+                  pointerEvents: 'none',
+                }}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : null}
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
               <span style={{ minWidth: 118, borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 12px', color: '#fff', fontSize: 11, fontWeight: 700, textShadow: '0 1px 3px rgba(0,0,0,.7)', background: 'rgba(16, 16, 16, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(6px)' }}>
                 <span style={{ lineHeight: 1.1, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
