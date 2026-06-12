@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "talents-stage-web",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "export PATH=/usr/local/bin:$PATH && npm run dev"],
       "port": 5173,
       "cwd": "/Users/sorinrotaru/Downloads/project/talent-stage-react"
     },
@@ -16,9 +16,23 @@
       "cwd": "/Users/sorinrotaru/Downloads/project/talent-stage-react/talent-stage-native"
     },
     {
+      "name": "talent-stage-native-momentum",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "export PATH=/usr/local/bin:$PATH && EXPO_PUBLIC_API_BASE=http://localhost:3000/api npx expo start --web --port 8083"],
+      "port": 8083,
+      "cwd": "/Users/sorinrotaru/Downloads/project/talent-stage-react/talent-stage-native-momentum"
+    },
+    {
+      "name": "test-app",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "export PATH=/usr/local/bin:$PATH && EXPO_PUBLIC_API_BASE=http://localhost:3000/api npx expo start --web --port 8082"],
+      "port": 8082,
+      "cwd": "/Users/sorinrotaru/Downloads/project/talent-stage-react/test-app"
+    },
+    {
       "name": "talents-stage-backend",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "export PATH=/usr/local/bin:/opt/homebrew/bin:$PATH && node dist/server.js"],
       "port": 3000,
       "cwd": "/Users/sorinrotaru/Downloads/project/talent-stage-react/talents-stage-backend/ts-backend-fix"
     }

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import AppPressable from '../../components/AppPressable';
 import { useNavigation } from '@react-navigation/native';
 import { AppColors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
@@ -85,12 +85,12 @@ export default function ForgotPasswordScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.buttons}>
-          <Pressable style={styles.cancelBtn} onPress={() => navigation.goBack()}>
+          <AppPressable style={styles.cancelBtn} onPress={() => navigation.goBack()}>
             <Text style={styles.cancelText}>Cancel</Text>
-          </Pressable>
-          <Pressable style={[styles.submitBtn, submitting && { opacity: 0.5 }]} onPress={submit} disabled={submitting}>
+          </AppPressable>
+          <AppPressable style={[styles.submitBtn, submitting && { opacity: 0.5 }]} onPress={submit} disabled={submitting}>
             {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Reset Password</Text>}
-          </Pressable>
+          </AppPressable>
         </View>
       </View>
     </View>

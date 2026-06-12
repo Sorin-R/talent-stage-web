@@ -1,4 +1,5 @@
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Share, Linking } from 'react-native';
+import { Modal, View, Text, StyleSheet, Share, Linking } from 'react-native';
+import AppPressable from './AppPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '../store/useAppStore';
 import { apiFetch } from '../services/api';
@@ -72,22 +73,22 @@ export default function ShareSheet() {
 
   return (
     <Modal visible={shareSheetOpen} transparent animationType="slide" onRequestClose={() => setShareSheetOpen(false)}>
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShareSheetOpen(false)}>
+      <AppPressable style={styles.overlay} onPress={() => setShareSheetOpen(false)}>
         <View style={styles.sheet} onStartShouldSetResponder={() => true}>
           <View style={styles.handle} />
           <Text style={styles.title}>Share</Text>
           <View style={styles.grid}>
             {platforms.map((p) => (
-              <TouchableOpacity key={p.name} style={styles.item} onPress={p.action}>
+              <AppPressable key={p.name} style={styles.item} onPress={p.action}>
                 <View style={styles.iconCircle}>
                   <Ionicons name={p.icon} size={26} color="#fff" />
                 </View>
                 <Text style={styles.label}>{p.name}</Text>
-              </TouchableOpacity>
+              </AppPressable>
             ))}
           </View>
         </View>
-      </TouchableOpacity>
+      </AppPressable>
     </Modal>
   );
 }

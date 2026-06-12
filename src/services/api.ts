@@ -10,6 +10,7 @@ const STREAM_MANIFEST_RE = /^https?:\/\/(?:iframe\.)?videodelivery\.net\/[^?#]+\
 const CFSTREAM_REL_RE = /^\/?uploads\/videos\/cfstream:([a-z0-9_-]+)(?:[?#].*)?$/i;
 const CFSTREAM_ABS_RE = /^https?:\/\/[^/]+\/uploads\/videos\/cfstream:([a-z0-9_-]+)(?:[?#].*)?$/i;
 const CFSTREAM_DIRECT_RE = /^cfstream:([a-z0-9_-]+)$/i;
+const GET_LIKE_METHODS = new Set(['GET', 'HEAD']);
 
 interface NetworkConnectionLike {
   type?: string;
@@ -122,17 +123,25 @@ const emitMaintenanceMode = (active: boolean, message = ''): void => {
   window.dispatchEvent(new CustomEvent(MAINTENANCE_EVENT, { detail: { active, message } }));
 };
 
+const buildCacheBustedPath = (path: string): string => {
+  const joiner = path.includes('?') ? '&' : '?';
+  return `${path}${joiner}_ts=${Date.now()}`;
+};
+
 export async function apiFetch<T = unknown>(
   path: string,
   opts: RequestInit & { body?: BodyInit | Record<string, unknown> | null } = {},
 ): Promise<ApiResponse<T>> {
   const isForm = opts.body instanceof FormData;
+  const method = String(opts.method || 'GET').toUpperCase();
+  const isGetLike = GET_LIKE_METHODS.has(method);
   const headers: Record<string, string> = isForm ? {} : { 'Content-Type': 'application/json' };
   const token = localStorage.getItem('ts_token');
   if (token) headers['Authorization'] = 'Bearer ' + token;
 
   const fetchOpts: RequestInit = {
     ...opts,
+    cache: isGetLike ? 'no-store' : opts.cache,
     headers: { ...headers, ...(opts.headers as Record<string, string> || {}) },
   };
 
@@ -141,7 +150,8 @@ export async function apiFetch<T = unknown>(
   }
 
   try {
-    const res = await fetch(API_BASE + path, fetchOpts);
+    const requestPath = isGetLike ? buildCacheBustedPath(path) : path;
+    const res = await fetch(API_BASE + requestPath, fetchOpts);
     const text = await res.text();
     if (!text || text.trim() === '') return { success: false, error: 'Empty response' };
     try {
