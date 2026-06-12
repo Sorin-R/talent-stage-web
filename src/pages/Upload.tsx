@@ -11,7 +11,9 @@ const CAMERA_UPLOAD_ICON = '/icons/upload-camera.png';
 const TITLE_MAX_LENGTH = 200;
 const DESCRIPTION_MAX_LENGTH = 1000;
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api.web-demo.space/api';
-const USE_CLOUDFLARE_STREAM_UPLOAD = String(import.meta.env.VITE_STREAM_UPLOADS || '').toLowerCase() === 'true';
+// Cloudflare Stream is the default upload path.
+// Set VITE_STREAM_UPLOADS=false only if we need to force the legacy upload route.
+const USE_CLOUDFLARE_STREAM_UPLOAD = String(import.meta.env.VITE_STREAM_UPLOADS ?? 'true').toLowerCase() !== 'false';
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
