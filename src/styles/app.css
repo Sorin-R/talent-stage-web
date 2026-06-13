@@ -404,6 +404,13 @@ button {
     margin: 0 auto;
 }
 
+/* PWA: avatar top already accounted for by .vtrow; remove double safe-area-inset */
+@media (display-mode: standalone) {
+    .home-page .vtrow .vtrow-user {
+        top: 10px;
+    }
+}
+
 /* ── REACTION OVERLAY ──────────────────────── */
 .react-overlay {
     position: absolute;
