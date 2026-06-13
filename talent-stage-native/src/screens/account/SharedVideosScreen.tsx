@@ -3,18 +3,19 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
-  Image,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import AppPressable from '../../components/AppPressable';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppColors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAppStore } from '../../store/useAppStore';
 import { toast } from '../../components/Toast';
+import SmartVideoThumbnail from '../../components/SmartVideoThumbnail';
 import type { PaginatedResponse, Video } from '../../types';
 
 const GRID_COLUMN_COUNT = 3;
@@ -82,8 +83,12 @@ export default function SharedVideosScreen() {
   };
 
   return (
-    <View style={styles.screenContainer}>
+    <SafeAreaView style={styles.screenContainer} edges={['top']}>
       <View style={styles.headerContainer}>
+        <AppPressable onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={20} color={AppColors.textPrimary} />
+          <Text style={styles.backText}>Back</Text>
+        </AppPressable>
         <Text style={styles.headerTitleText}>Videos you shared</Text>
         <Text style={styles.headerSubtitleText}>{sharedVideos.length} items</Text>
       </View>
@@ -95,9 +100,9 @@ export default function SharedVideosScreen() {
       ) : loadErrorText ? (
         <View style={styles.centerStateContainer}>
           <Text style={styles.errorText}>{loadErrorText}</Text>
-          <Pressable style={styles.retryButton} onPress={() => void loadSharedVideos()}>
+          <AppPressable style={styles.retryButton} onPress={() => void loadSharedVideos()}>
             <Text style={styles.retryButtonText}>Retry</Text>
-          </Pressable>
+          </AppPressable>
         </View>
       ) : (
         <FlatList
@@ -108,15 +113,16 @@ export default function SharedVideosScreen() {
           contentContainerStyle={styles.gridContentContainer}
           columnWrapperStyle={styles.gridColumnWrapper}
           renderItem={({ item: videoItem, index }) => (
-            <Pressable
+            <AppPressable
               onPress={() => onOpenVideoInFeed(index)}
               style={[styles.videoTileContainer, { width: tileWidth, height: tileWidth * 1.45 }]}
             >
-              {videoItem.thumbnail_url ? (
-                <Image source={{ uri: videoItem.thumbnail_url }} style={styles.videoTileImage} />
-              ) : (
-                <View style={styles.videoTileFallback} />
-              )}
+              <SmartVideoThumbnail
+                thumbnailUrl={videoItem.thumbnail_url}
+                fileUrl={videoItem.file_url}
+                imageStyle={styles.videoTileImage}
+                fallbackStyle={styles.videoTileFallback}
+              />
               <View style={styles.videoTileOverlayBg} />
 
               {/* Play icon */}
@@ -125,13 +131,13 @@ export default function SharedVideosScreen() {
               </View>
 
               {/* Remove button */}
-              <Pressable
+              <AppPressable
                 onPress={() => void onRemoveShared(index, videoItem.id, videoItem.share_id)}
                 style={styles.removeButton}
               >
                 <Ionicons name="trash-outline" size={14} color={AppColors.textPrimary} />
-              </Pressable>
-            </Pressable>
+              </AppPressable>
+            </AppPressable>
           )}
           ListEmptyComponent={(
             <View style={styles.centerStateContainer}>
@@ -140,7 +146,7 @@ export default function SharedVideosScreen() {
           )}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -150,11 +156,22 @@ const styles = StyleSheet.create({
     backgroundColor: AppColors.backgroundPrimary,
   },
   headerContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingHorizontal: 14,
+    paddingTop: 10,
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: AppColors.borderPrimary,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  backText: {
+    color: AppColors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
   },
   headerTitleText: {
     color: AppColors.textPrimary,
@@ -188,6 +205,8 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: '#181818',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   videoTileOverlayBg: {
     ...StyleSheet.absoluteFillObject,

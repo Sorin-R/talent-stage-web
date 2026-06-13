@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import AppPressable from '../../components/AppPressable';
 import { useNavigation } from '@react-navigation/native';
 import { AppColors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
@@ -98,13 +98,13 @@ export default function SignupScreen() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Pressable style={styles.btn} onPress={submit} disabled={submitting}>
+      <AppPressable style={styles.btn} onPress={submit} disabled={submitting}>
         {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Sign Up</Text>}
-      </Pressable>
+      </AppPressable>
 
-      <Pressable onPress={() => navigation.goBack()}>
+      <AppPressable onPress={() => navigation.goBack()}>
         <Text style={styles.link}>Already a member? <Text style={{ color: AppColors.accentPrimary }}>Sign In</Text></Text>
-      </Pressable>
+      </AppPressable>
     </ScrollView>
   );
 }

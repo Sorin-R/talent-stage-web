@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppColors } from '../theme/colors';
 import HomeScreen from '../screens/HomeScreen';
@@ -43,40 +44,78 @@ export type MainTabParamList = {
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const MainTab = createBottomTabNavigator<MainTabParamList>();
 
+const TAB_ICONS: Record<string, { outline: keyof typeof Ionicons.glyphMap; filled: keyof typeof Ionicons.glyphMap }> = {
+  Home: { outline: 'home-outline', filled: 'home' },
+  Following: { outline: 'people-outline', filled: 'people' },
+  Upload: { outline: 'add-circle-outline', filled: 'add-circle' },
+  Saved: { outline: 'bookmark-outline', filled: 'bookmark' },
+  Account: { outline: 'person-outline', filled: 'person' },
+};
+
+const defaultTabBarStyle = {
+  backgroundColor: '#1a1a1a',
+  borderTopWidth: 1,
+  borderTopColor: '#333333',
+  overflow: 'visible',
+  height: 86,
+  paddingTop: 6,
+  paddingBottom: 14,
+} as const;
+
+const homeTabBarStyle = {
+  ...defaultTabBarStyle,
+  backgroundColor: '#1a1a1a',
+  borderTopWidth: 0,
+} as const;
+
 function MainTabNavigator() {
   return (
     <MainTab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: AppColors.backgroundPrimary,
-          borderTopColor: AppColors.borderPrimary,
-          height: 64,
-          paddingTop: 6,
-          paddingBottom: 8,
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-        },
+        tabBarShowLabel: true,
         tabBarActiveTintColor: AppColors.textPrimary,
-        tabBarInactiveTintColor: AppColors.textSecondary,
-        tabBarIcon: ({ color, size, focused }) => {
-          let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'home-outline';
+        tabBarInactiveTintColor: '#888888',
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginTop: -2 },
+        tabBarStyle: route.name === 'Home' ? homeTabBarStyle : defaultTabBarStyle,
+        tabBarItemStyle: styles.tabItemButton,
+        tabBarIcon: ({ focused }) => {
+          if (route.name === 'Upload') {
+            if (!focused) {
+              return (
+                <View style={styles.uploadIconCircleInactiveContainer}>
+                  <Ionicons name="add" size={30} color="#666666" />
+                </View>
+              );
+            }
 
-          if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
-          if (route.name === 'Following') iconName = focused ? 'people' : 'people-outline';
-          if (route.name === 'Upload') iconName = focused ? 'add-circle' : 'add-circle-outline';
-          if (route.name === 'Saved') iconName = focused ? 'bookmark' : 'bookmark-outline';
-          if (route.name === 'Account') iconName = focused ? 'person' : 'person-outline';
+            return (
+              <View style={styles.uploadIconCircleContainer}>
+                <Ionicons name="add" size={30} color="#0a0a0a" />
+              </View>
+            );
+          }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          const icons = TAB_ICONS[route.name] || TAB_ICONS.Home;
+          const iconName = focused ? icons.filled : icons.outline;
+          const iconColor = focused ? AppColors.textPrimary : '#666666';
+          const iconSize = 26;
+
+          return <Ionicons name={iconName} size={iconSize} color={iconColor} />;
         },
       })}
     >
       <MainTab.Screen name="Home" component={HomeScreen} />
       <MainTab.Screen name="Following" component={FollowingScreen} />
-      <MainTab.Screen name="Upload" component={UploadScreen} />
+      <MainTab.Screen
+        name="Upload"
+        component={UploadScreen}
+        options={{
+          tabBarLabel: 'Upload',
+          tabBarLabelStyle: styles.uploadHiddenLabelText,
+          tabBarItemStyle: styles.tabItemButton,
+        }}
+      />
       <MainTab.Screen name="Saved" component={SavedScreen} />
       <MainTab.Screen
         name="Account"
@@ -102,6 +141,8 @@ export default function RootNavigator() {
         headerTintColor: AppColors.textPrimary,
         headerTitleStyle: { fontSize: 16, fontWeight: '700' },
         contentStyle: { backgroundColor: AppColors.backgroundPrimary },
+        headerBackButtonDisplayMode: 'minimal',
+        headerBackTitle: '',
       }}
     >
       <RootStack.Screen name="MainTabs" component={MainTabNavigator} options={{ headerShown: false }} />
@@ -112,8 +153,40 @@ export default function RootNavigator() {
       <RootStack.Screen name="FollowingUsers" component={FollowingUsersScreen} options={{ title: 'Following' }} />
       <RootStack.Screen name="SharedVideos" component={SharedVideosScreen} options={{ title: 'Shared Videos' }} />
       <RootStack.Screen name="VideoAnalytics" component={VideoAnalyticsScreen} options={{ title: 'Video Analytics' }} />
-      <RootStack.Screen name="CreatorProfile" component={CreatorProfileScreen} options={{ title: 'Creator' }} />
+      <RootStack.Screen
+        name="CreatorProfile"
+        component={CreatorProfileScreen}
+        options={{ title: 'Creator', headerBackButtonDisplayMode: 'minimal' }}
+      />
       <RootStack.Screen name="TalentCategory" component={TalentCategoryScreen} options={{ title: 'Talent' }} />
     </RootStack.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  tabItemButton: {
+    paddingTop: 15,
+    paddingBottom: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadHiddenLabelText: {
+    opacity: 0,
+  },
+  uploadIconCircleContainer: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadIconCircleInactiveContainer: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#2a2a2a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

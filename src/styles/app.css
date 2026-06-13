@@ -338,6 +338,7 @@ button {
     scroll-padding-top: 0;
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
+    transition: flex-basis 0.28s ease, height 0.28s ease, top 0.28s ease;
 }
 .feed-container .feed-strip {
     scroll-snap-align: start;
@@ -2363,6 +2364,11 @@ video::-webkit-media-controls-panel {
         border-radius: 16px;
         overflow: hidden;
         background: #000;
+    }
+
+    .home-page .feed-container.cmts-open {
+        top: 74px;
+        height: min(38vh, 258px);
     }
 
     .home-page .cib {

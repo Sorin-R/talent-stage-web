@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { Audio } from 'expo-av';
 import RootNavigator from './src/navigation/RootNavigator';
 import Toast from './src/components/Toast';
 import { useAppStore } from './src/store/useAppStore';
@@ -29,6 +30,16 @@ export default function App() {
   useEffect(() => {
     void restoreSession();
   }, [restoreSession]);
+
+  useEffect(() => {
+    void Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      allowsRecordingIOS: false,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+      staysActiveInBackground: false,
+    });
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: AppColors.backgroundPrimary }}>

@@ -3,13 +3,13 @@ import {
   ActivityIndicator,
   Dimensions,
   Linking,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import AppPressable from '../../components/AppPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { AppColors } from '../../theme/colors';
@@ -194,10 +194,10 @@ export default function VideoAnalyticsScreen() {
     <View style={styles.screenContainer}>
       {/* Back header */}
       <View style={styles.backRow}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+        <AppPressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={20} color={AppColors.textPrimary} />
           <Text style={styles.backText}>Back</Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       {loading && (
@@ -219,18 +219,18 @@ export default function VideoAnalyticsScreen() {
           <View style={styles.titleRow}>
             <Text style={styles.titleText}>My Video Analytics</Text>
             <View style={styles.periodToggle}>
-              <Pressable
+              <AppPressable
                 onPress={() => setPeriodMode('30d')}
                 style={[styles.periodButton, periodMode === '30d' && styles.periodButtonActive]}
               >
                 <Text style={styles.periodButtonText}>30d</Text>
-              </Pressable>
-              <Pressable
+              </AppPressable>
+              <AppPressable
                 onPress={() => setPeriodMode('all')}
                 style={[styles.periodButton, styles.periodButtonRight, periodMode === 'all' && styles.periodButtonActive]}
               >
                 <Text style={styles.periodButtonText}>Full-time</Text>
-              </Pressable>
+              </AppPressable>
             </View>
           </View>
 
@@ -341,26 +341,26 @@ export default function VideoAnalyticsScreen() {
 
             {/* Sort + page size pickers */}
             <View style={styles.pickerRow}>
-              <Pressable onPress={() => setSortPickerOpen(!sortPickerOpen)} style={styles.pickerButton}>
+              <AppPressable onPress={() => setSortPickerOpen(!sortPickerOpen)} style={styles.pickerButton}>
                 <Text style={styles.pickerButtonText}>{sortLabels[sortMode]}</Text>
                 <Ionicons name="chevron-down" size={14} color={AppColors.textSecondary} />
-              </Pressable>
-              <Pressable onPress={() => setPageSizePickerOpen(!pageSizePickerOpen)} style={styles.pickerButton}>
+              </AppPressable>
+              <AppPressable onPress={() => setPageSizePickerOpen(!pageSizePickerOpen)} style={styles.pickerButton}>
                 <Text style={styles.pickerButtonText}>{pageSize} / page</Text>
                 <Ionicons name="chevron-down" size={14} color={AppColors.textSecondary} />
-              </Pressable>
+              </AppPressable>
             </View>
 
             {sortPickerOpen && (
               <View style={styles.dropdownContainer}>
                 {(Object.keys(sortLabels) as SortMode[]).map((key) => (
-                  <Pressable
+                  <AppPressable
                     key={key}
                     onPress={() => { setSortMode(key); setSortPickerOpen(false); }}
                     style={[styles.dropdownItem, sortMode === key && styles.dropdownItemActive]}
                   >
                     <Text style={styles.dropdownItemText}>{sortLabels[key]}</Text>
-                  </Pressable>
+                  </AppPressable>
                 ))}
               </View>
             )}
@@ -368,13 +368,13 @@ export default function VideoAnalyticsScreen() {
             {pageSizePickerOpen && (
               <View style={styles.dropdownContainer}>
                 {pageSizeOptions.map((size) => (
-                  <Pressable
+                  <AppPressable
                     key={size}
                     onPress={() => { setPageSize(size); setPageSizePickerOpen(false); }}
                     style={[styles.dropdownItem, pageSize === size && styles.dropdownItemActive]}
                   >
                     <Text style={styles.dropdownItemText}>{size} / page</Text>
-                  </Pressable>
+                  </AppPressable>
                 ))}
               </View>
             )}
@@ -462,10 +462,10 @@ export default function VideoAnalyticsScreen() {
                       </View>
                     )}
                     {v.file_url ? (
-                      <Pressable onPress={() => Linking.openURL(v.file_url!)} style={styles.openLink}>
+                      <AppPressable onPress={() => Linking.openURL(v.file_url!)} style={styles.openLink}>
                         <Text style={styles.openLinkText}>Open</Text>
                         <Ionicons name="open-outline" size={14} color={AppColors.accentPrimary} />
-                      </Pressable>
+                      </AppPressable>
                     ) : null}
                   </View>
                 );
@@ -476,20 +476,20 @@ export default function VideoAnalyticsScreen() {
             <View style={styles.paginationRow}>
               <Text style={styles.pageInfo}>Page {safePage} / {totalPages}</Text>
               <View style={styles.pageButtons}>
-                <Pressable
+                <AppPressable
                   onPress={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={safePage <= 1}
                   style={[styles.pageButton, safePage <= 1 && styles.pageButtonDisabled]}
                 >
                   <Text style={styles.pageButtonText}>Prev</Text>
-                </Pressable>
-                <Pressable
+                </AppPressable>
+                <AppPressable
                   onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={safePage >= totalPages}
                   style={[styles.pageButton, safePage >= totalPages && styles.pageButtonDisabled]}
                 >
                   <Text style={styles.pageButtonText}>Next</Text>
-                </Pressable>
+                </AppPressable>
               </View>
             </View>
           </View>
@@ -509,9 +509,9 @@ export default function VideoAnalyticsScreen() {
                     </Text>
                   </View>
                   {v.file_url && (
-                    <Pressable onPress={() => Linking.openURL(v.file_url!)}>
+                    <AppPressable onPress={() => Linking.openURL(v.file_url!)}>
                       <Text style={styles.openLinkText}>Open</Text>
-                    </Pressable>
+                    </AppPressable>
                   )}
                 </View>
               ))
@@ -530,9 +530,9 @@ export default function VideoAnalyticsScreen() {
                     <Text style={styles.listRowSub}>{(v.reasons || []).join(' \u2022 ') || 'Needs review'}</Text>
                   </View>
                   {v.file_url && (
-                    <Pressable onPress={() => Linking.openURL(v.file_url!)}>
+                    <AppPressable onPress={() => Linking.openURL(v.file_url!)}>
                       <Text style={styles.openLinkText}>Open</Text>
-                    </Pressable>
+                    </AppPressable>
                   )}
                 </View>
               ))

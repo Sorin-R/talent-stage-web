@@ -1,4 +1,4 @@
-import { useAppStore } from '../store/useAppStore';
+import { DEFAULT_AVATAR, useAppStore } from '../store/useAppStore';
 import type { CSSProperties } from 'react';
 
 type Page = 'home' | 'following' | 'upload' | 'saved' | 'account' | 'login';
@@ -44,7 +44,7 @@ export default function BottomNav({ active, onNav }: Props) {
       </div>
       <div className={`bi ${active === 'account' || active === 'login' ? 'active' : ''}`} onClick={profNav}>
         <div className="bc">
-          <img src="/icons/account.png" style={{ width: 34, height: 34, objectFit: 'contain', filter: 'invert(1)' }} alt="Account" />
+          <img src={DEFAULT_AVATAR} style={{ width: 34, height: 34, objectFit: 'contain', filter: 'invert(1)' }} alt="Account" />
         </div>
       </div>
     </div>

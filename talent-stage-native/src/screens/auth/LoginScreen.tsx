@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import AppPressable from '../../components/AppPressable';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppColors } from '../../theme/colors';
@@ -74,17 +74,17 @@ export default function LoginScreen() {
 
       {loginErrorText ? <Text style={styles.errorText}>{loginErrorText}</Text> : null}
 
-      <Pressable style={styles.primaryButton} onPress={submitLogin} disabled={isSubmittingLogin}>
+      <AppPressable style={styles.primaryButton} onPress={submitLogin} disabled={isSubmittingLogin}>
         {isSubmittingLogin ? <ActivityIndicator color={AppColors.textPrimary} /> : <Text style={styles.primaryButtonText}>Sign In</Text>}
-      </Pressable>
+      </AppPressable>
 
-      <Pressable onPress={() => navigation.navigate('Signup')}>
+      <AppPressable onPress={() => navigation.navigate('Signup')}>
         <Text style={styles.secondaryLinkText}>Create account</Text>
-      </Pressable>
+      </AppPressable>
 
-      <Pressable onPress={() => navigation.navigate('ForgotPassword')}>
+      <AppPressable onPress={() => navigation.navigate('ForgotPassword')}>
         <Text style={styles.secondaryLinkText}>Forgot password?</Text>
-      </Pressable>
+      </AppPressable>
     </View>
   );
 }
