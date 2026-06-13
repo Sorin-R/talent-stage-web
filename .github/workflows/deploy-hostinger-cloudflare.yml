@@ -76,30 +76,32 @@ jobs:
           : "${SSH_USER:?Missing SSH_USER (secret or variable)}"
           : "${WEB_DEPLOY_PATH:?Missing WEB_DEPLOY_PATH (secret or variable)}"
 
-          SSH_OPTS="-i ~/.ssh/id_ed25519 -p $SSH_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"
+          SSH_OPTS="-i ~/.ssh/id_ed25519 -p $SSH_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
 
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4 5 6; do
             if ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "mkdir -p '$WEB_DEPLOY_PATH'"; then
               break
             fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "SSH mkdir failed after 3 attempts"
+            if [ "$attempt" -eq 6 ]; then
+              echo "SSH mkdir failed after 6 attempts"
               exit 1
             fi
-            sleep $((attempt * 2))
+            echo "SSH mkdir attempt $attempt failed; retrying..."
+            sleep $((attempt * 5))
           done
 
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4 5 6; do
             if rsync -az --delete \
               -e "ssh $SSH_OPTS" \
               dist/ "$SSH_USER@$SSH_HOST:$WEB_DEPLOY_PATH/"; then
               break
             fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "rsync deploy failed after 3 attempts"
+            if [ "$attempt" -eq 6 ]; then
+              echo "rsync deploy failed after 6 attempts"
               exit 1
             fi
-            sleep $((attempt * 2))
+            echo "rsync attempt $attempt failed; retrying..."
+            sleep $((attempt * 5))
           done
 
   update-backend-stream-env:
